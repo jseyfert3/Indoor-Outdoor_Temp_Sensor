@@ -1,0 +1,105 @@
+/*
+Sketch for outdoor unit of indoor/outdoor "which is better" project for Chris.
+Indoor unit has ThinkInk e-ink display & RTC with SD card logging & SHT45 RH/temp sensor.
+Outdoor unit has RHT45 sensor and goes to sleep to save battery.
+Both units are built on a M0 powered Feather with RFM69 915 MHz radio (license free).
+
+Jonathan Seyfert
+2023-08-15
+ 
+Cut e-ink ECS pin, soldered wire to move it to pin A1 on feather (GPIO 15 on M0 Feather)
+Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Feather)
+*/
+
+#include <SPI.h>  // For RFM69
+#include <RH_RF69.h> // For RFM69
+#include "Adafruit_SHT4x.h" // for SHT45 temp/humidity sensor
+
+#define RF69_FREQ 915.0  // Frequency of RFM69
+#define RFM69_CS      8  // RFM69 pins on M0 Feather
+#define RFM69_INT     3  // RFM69 pins on M0 Feather
+#define RFM69_RST     4  // RFM69 pins on M0 Feather
+#define LED           13 // Built-in LED on M0 Feather
+#define VBATPIN A7 // Internal battery voltage divider measurement pin
+
+Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
+RH_RF69 rf69(RFM69_CS, RFM69_INT); // Singleton instance of the radio driver
+
+float x = 0.0; // for custom dtostrf()
+float y = 0.0; // for custom dtostrf()
+float batteryVoltage = 0; // for measuring battery voltage
+
+void setup() {
+  Serial.begin(115200);
+  //while (!Serial) { delay(1); } // wait until serial console is open, remove if not tethered to computer
+
+  pinMode(RFM69_RST, OUTPUT);
+  digitalWrite(RFM69_RST, LOW);
+
+  // manual reset RFM69
+  digitalWrite(RFM69_RST, HIGH);
+  delay(10);
+  digitalWrite(RFM69_RST, LOW);
+  delay(10);
+
+  sht4.begin(); // initialize SHT45 sensor
+  sht4.setPrecision(SHT4X_HIGH_PRECISION); // can use MED or LOW, HIGH takes longer
+  sht4.setHeater(SHT4X_NO_HEATER); // can use 6 different heater options, see example
+  
+  rf69.init(); // Initialize RFM69
+  rf69.setFrequency(RF69_FREQ); // Set RFM69 frequency
+  rf69.setTxPower(20, true);  // range from 14-20 for power, 2nd arg must be true for 69HCW
+  // The encryption key has to be the same as the one in the server
+  uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+  rf69.setEncryptionKey(key);
+}
+
+void loop() {
+  sensors_event_t humidity, temp; // for SHT45
+  sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
+  float dryBulb = temp.temperature; // Get SHT45 temp
+  float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
+  
+  // Send dryBulb/WBGT/humdity/battery voltage as XX.X XX.X XX.X X.XX
+  char radioPacket[30] = {'\0'};
+  String tempDBPacketString = String(dryBulb*1.8 + 32, 1); // convert temp to char string
+  char tempDBPacketChar[6] = {'\0'};
+  tempDBPacketString.toCharArray(tempDBPacketChar, 6);
+  strcat(radioPacket, tempDBPacketChar);
+  strcat(radioPacket, " ");
+  
+  String tempWBGTPacketString = String((0.7*wetBulb + 0.3*dryBulb)*1.8 + 32, 1); // convert temp to char string
+  char tempWBGTPacketChar[6] = {'\0'};
+  tempWBGTPacketString.toCharArray(tempWBGTPacketChar, 6);
+  strcat(radioPacket, tempWBGTPacketChar);
+  strcat(radioPacket, " ");
+  
+  String RHString = String(humidity.relative_humidity, 1);
+  char RHPacketChar[6] = {'\0'};
+  RHString.toCharArray(RHPacketChar, 6);
+  strcat(radioPacket, RHPacketChar);
+  strcat(radioPacket, " ");
+  
+  batteryVoltage = analogRead(VBATPIN); // read battery voltage
+  batteryVoltage *= 2;    // we divided by 2, so multiply back
+  batteryVoltage *= 3.3;  // Multiply by 3.3V, our reference voltage
+  batteryVoltage /= 1024; // convert to voltage
+  String batString = String(batteryVoltage, 2);
+  char batPacketChar[5] = {'\0'};
+  batString.toCharArray(batPacketChar, 5);
+  strcat(radioPacket, batPacketChar);
+
+  Serial.println(radioPacket); // troubleshooting
+  
+  //send the packet
+  rf69.send((uint8_t *)radioPacket, strlen(radioPacket));
+  rf69.waitPacketSent();
+
+  delay(10000);
+}
+
+float wetBulbCalc(float DB, float RH){
+  float WBC = DB*(atan(0.151977*pow(RH + 8.313659,0.5))) + atan(DB + RH) - atan(RH - 1.676331) + 0.00391838*pow(RH, 1.5)*atan(0.023101*RH) - 4.686035;
+  return WBC;
+}
