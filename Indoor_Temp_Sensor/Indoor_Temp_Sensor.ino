@@ -14,7 +14,7 @@ Outdoor unit has RHT45 sensor and goes to sleep to save battery.
 Both units are built on a M0 powered Feather with RFM69 915 MHz radio (license free).
 
 Jonathan Seyfert
-2023-08-15
+2023-10-21
  
 Cut e-ink ECS pin, soldered wire to move it to pin A1 on feather (GPIO 15 on M0 Feather)
 Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Feather)
@@ -117,12 +117,14 @@ void loop() {
   
   if(millis() - timer >= updateTime)
   {
+    Serial.println("Begin display update");
     sensors_event_t humidity, temp; // for SHT45
     sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
     float dryBulb = temp.temperature; // Get SHT45 temp
     float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
     readAndDisplaySCD30(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, rxPacket);
     timer = millis();
+    Serial.println("Display update finished");
   }
 }
 
