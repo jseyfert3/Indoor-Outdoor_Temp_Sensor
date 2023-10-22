@@ -56,7 +56,7 @@ Jonathan Seyfert
 File logfile; // name to use for file object
 
 extern "C" char *sbrk(int i);  // for FreeRam()
-const unsigned long updateTime = 180000;  // How often to update display
+const unsigned long updateTime = 30000;  // How often to update display
 unsigned long timer = 0;  // Used to check if it's time to update display
 const int radioSendTime = 15000;  // Send data via radio every 15 seconds
 float batteryVoltage = 0; // for measuring battery voltage
