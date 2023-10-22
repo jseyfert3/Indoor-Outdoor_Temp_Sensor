@@ -174,10 +174,15 @@ void readAndDisplaySCD30(float DB, float RH, float WB, String RX)
   Serial.println(DB);
   Serial.println(outDB);
   display.setCursor(5, 30);
+  Serial.println("after setting cursor");
   display.print(F("Temp (F)  "));
+  Serial.println("after saying Temp (F)");
   display.print(DB, 1);
+  Serial.println("after printing DB");
   display.print(F("    "));
+  Serial.println("after printing spaces");
   display.print(outDB);
+  Serial.println("after printing outDB");
 
   Serial.println(RH);
   Serial.println(outRH);
