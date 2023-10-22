@@ -171,18 +171,25 @@ void readAndDisplaySCD30(float DB, float RH, float WB, String RX)
   display.setCursor(5, 5);
   display.print(F("         Indoor  Outdoor"));
   
+  Serial.println(DB);
+  Serial.println(outDB);
   display.setCursor(5, 30);
   display.print(F("Temp (F)  "));
   display.print(DB, 1);
   display.print(F("    "));
   display.print(outDB);
 
+  Serial.println(RH);
+  Serial.println(outRH);
   display.setCursor(5, 55);
   display.print(F("RH   (%)  "));
   display.print(RH, 1);
   display.print(F("    "));
   display.print(outRH);
 
+  Serial.println(WB);
+  Serial.println(DB);
+  Serial.println(outWBGT);
   display.setCursor(5, 80);
   display.setTextColor(EPD_BLACK);
   display.print(F("WBGT (F)  "));
@@ -190,6 +197,8 @@ void readAndDisplaySCD30(float DB, float RH, float WB, String RX)
   display.print(F("    "));
   display.print(outWBGT);
 
+  Serial.println(batteryVoltage);
+  Serial.println(outVolt);
   display.setCursor(5, 105);
   display.setTextColor(EPD_DARK);
   display.print(F("Bat  (V)  "));
@@ -197,9 +206,11 @@ void readAndDisplaySCD30(float DB, float RH, float WB, String RX)
   display.print(F("    "));
   display.print(outVolt);
 
+  Serial.println("Before lines");
   display.drawFastVLine(195, 0, 128, EPD_BLACK);
   display.drawFastVLine(105, 0, 128, EPD_BLACK);
   display.drawFastHLine(0, 25, 296, EPD_BLACK);
+  Serial.println("After lines");
 
   display.setTextSize(1);
   display.setTextColor(EPD_BLACK);
