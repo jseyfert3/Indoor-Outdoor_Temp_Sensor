@@ -144,6 +144,8 @@ void loop() {
     sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
     float dryBulb = temp.temperature; // Get SHT45 temp
     float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
+    Serial.println(dryBulb);
+    Serial.println(wetBulb);
     readAndDisplaySCD30(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, rxPacket);
     timer = millis();
     Serial.println("Display update finished");
@@ -154,11 +156,14 @@ void loop() {
 
 void readAndDisplaySCD30(float DB, float RH, float WB, String RX)
 {
+  Serial.println("Inside the display update");
   sscanf(RX.c_str(), "%s %s %s %s", &outDB, &outWBGT, &outRH, &outVolt); // parse packet to values
+  Serial.println("finished the sscanf!");
   batteryVoltage = analogRead(VBATPIN); // read battery voltage
   batteryVoltage *= 2;    // we divided by 2, so multiply back
   batteryVoltage *= 3.3;  // Multiply by 3.3V, our reference voltage
   batteryVoltage /= 1024; // convert to voltage
+  Serial.println("finished battery conversion");
 
   display.clearBuffer();
   display.setTextSize(2);
@@ -202,8 +207,10 @@ void readAndDisplaySCD30(float DB, float RH, float WB, String RX)
   display.print(F("Last update:"));
   display.setCursor(5, 14);
   display.print(F("HH:MM"));
+  Serial.println("finished writing to display");
 
   display.display();
+  Serial.println("end of display function");
 }
 
 float wetBulbCalc(float DB, float RH){
