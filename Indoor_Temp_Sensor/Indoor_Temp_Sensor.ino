@@ -13,17 +13,23 @@ Indoor unit has ThinkInk e-ink display & RTC with SD card logging & SHT45 RH/tem
 Outdoor unit has RHT45 sensor and goes to sleep to save battery.
 Both units are built on a M0 powered Feather with RFM69 915 MHz radio (license free).
 
-Jonathan Seyfert
-2023-10-21
- 
 Cut e-ink ECS pin, soldered wire to move it to pin A1 on feather (GPIO 15 on M0 Feather)
 Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Feather)
+
+Currently working on the branch 1-indoor-sensor-freezes-up
+Trying to add SD data logging of packets so I don't need my computer to monitor serial port
+and so I have a record of the rx packet that crashes the micro...hopefully. Need to add SD
+card logging anyway.
+
+Jonathan Seyfert
+2023-10-22
 */
 
 #include "Adafruit_ThinkInk.h" // for e-ink display
 #include "Adafruit_SHT4x.h" // for SHT45 temp/humidity sensor
-#include <SPI.h>  // For RFM69
+#include <SPI.h>  // For RFM69 & e-ink & SD card
 #include <RH_RF69.h>  // For RFM69
+#include <SD.h> // For SD card logging
 
 // The following is for the e-ink display
 // Note that the e-Ink Wing has an SD card CS on pin 5, do not use on accident!
@@ -35,7 +41,6 @@ Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Fe
 #define BTN_A       11  // Button A on e-Ink
 #define BTN_B       12  // Button B on e-Ink
 #define BTN_C       13  // Button C on e-Ink
-
 #define VBATPIN A7 // Internal battery voltage divider measurement pin
 #define RTC_SD_CS 16 // RTC wing SD chip select pin
 #define COLOR1 EPD_BLACK  // for ThinkInk Display
@@ -46,6 +51,9 @@ Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Fe
 #define RFM69_INT     3  // RFM69 pins on M0 Feather
 #define RFM69_RST     4  // RFM69 pins on M0 Feather
 #define LED           13 // RFM69 pins on M0 Feather
+#define SDCS          16 // CS for RTC datalogging wing SD card
+
+File logfile; // name to use for file object
 
 extern "C" char *sbrk(int i);  // for FreeRam()
 const unsigned long updateTime = 180000;  // How often to update display
@@ -89,6 +97,14 @@ void setup()
   display.begin(THINKINK_GRAYSCALE4);  // Initialize e-Ink display
   delay(5000);  // Pause for 5 seconds to allow sensor time to initialize before displaying inital values
 
+  // see if the card is present and can be initialized:
+  if (!SD.begin(SDCS)) {
+    Serial.println("Card init. failed!");
+    while(1);
+  }
+
+  logfile = SD.open("crashLog", FILE_WRITE); // Open file for logging crash as writable file
+
   // The below updates the display once on power-up
   sensors_event_t humidity, temp; // for SHT45
   sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
@@ -112,12 +128,18 @@ void loop() {
       Serial.println(rxPacket); // rx format is dryBulb/wetBulb/humdity/battery voltage as XX.X XX.X XX.X X.XX
       Serial.print("RSSI: ");
       Serial.println(rf69.lastRssi(), DEC);
+      logfile.println(rxPacket);
+      logfile.print("RSSI: ");
+      logfile.println(rf69.lastRssi(), DEC);
+      logfile.flush();
     }
    }
   
   if(millis() - timer >= updateTime)
   {
     Serial.println("Begin display update");
+    logfile.println("Begin display update");
+    logfile.flush(); // ensure data is written before potential crash
     sensors_event_t humidity, temp; // for SHT45
     sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
     float dryBulb = temp.temperature; // Get SHT45 temp
@@ -125,6 +147,8 @@ void loop() {
     readAndDisplaySCD30(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, rxPacket);
     timer = millis();
     Serial.println("Display update finished");
+    logfile.println("Display update finished");
+    logfile.flush();
   }
 }
 
@@ -187,7 +211,7 @@ float wetBulbCalc(float DB, float RH){
   return WBC;
 }
 
-int FreeRam () {  //http://forum.arduino.cc/index.php?topic=365830.msg2542879#msg2542879
-  char stack_dummy = 0;
-  return &stack_dummy - sbrk(0);
-}
+// int FreeRam () {  //http://forum.arduino.cc/index.php?topic=365830.msg2542879#msg2542879
+//   char stack_dummy = 0;
+//   return &stack_dummy - sbrk(0);
+// }
