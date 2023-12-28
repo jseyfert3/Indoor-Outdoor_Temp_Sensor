@@ -112,6 +112,8 @@ void setup()
   float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
   readAndDisplaySCD30(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, "Waiting...");
   Serial.println(FreeMem());
+
+  SPI.usingInterrupt(digitalPinToInterrupt(RFM69_INT)); // Apparently the RadioHead library doesn't register it does SPI within an interrupt, so this is required to avoid conflicts
 }
 
 void loop() {
