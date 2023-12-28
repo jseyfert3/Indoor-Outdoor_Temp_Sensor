@@ -111,7 +111,6 @@ void setup()
   float dryBulb = temp.temperature; // Convert SHT45 temp from C to F
   float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
   readAndDisplaySCD30(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, "Waiting...");
-  Serial.println(FreeMem());
 
   SPI.usingInterrupt(digitalPinToInterrupt(RFM69_INT)); // Apparently the RadioHead library doesn't register it does SPI within an interrupt, so this is required to avoid conflicts
 }
@@ -124,7 +123,6 @@ void loop() {
     {
       if (!len) return; //I think this is checking for buffer overflow? Part of example code
       buf[len] = 0;
-      Serial.println(FreeMem());
       Serial.print("Received [");
       Serial.print(len);
       Serial.print("]: ");
@@ -132,108 +130,63 @@ void loop() {
       Serial.println(rxPacket); // rx format is dryBulb/wetBulb/humdity/battery voltage as XX.X XX.X XX.X X.XX
       Serial.print("RSSI: ");
       Serial.println(rf69.lastRssi(), DEC);
-      Serial.println(FreeMem());
-      logfile.println(rxPacket);
-      logfile.print("RSSI: ");
-      logfile.println(rf69.lastRssi(), DEC);
-      logfile.flush();
     }
    }
   
   if(millis() - timer >= updateTime)
   {
-    Serial.println(FreeMem());
-    Serial.println("Begin display update");
-    logfile.println("Begin display update");
-    logfile.flush(); // ensure data is written before potential crash
-    Serial.println(FreeMem());
     sensors_event_t humidity, temp; // for SHT45
     sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
-    Serial.println(FreeMem());
     float dryBulb = temp.temperature; // Get SHT45 temp
     float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
-    Serial.println(FreeMem());
-    Serial.println(dryBulb);
-    Serial.println(wetBulb);
     readAndDisplaySCD30(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, rxPacket);
     timer = millis();
-    Serial.println("Display update finished");
-    logfile.println("Display update finished");
-    logfile.flush();
-    Serial.println(FreeMem());
   }
 }
 
 void readAndDisplaySCD30(float DB, float RH, float WB, String RX)
 {
-  Serial.println(FreeMem());
-  Serial.println("Inside the display update");
   sscanf(RX.c_str(), "%s %s %s %s", &outDB, &outWBGT, &outRH, &outVolt); // parse packet to values
-  Serial.println("finished the sscanf!");
   batteryVoltage = analogRead(VBATPIN); // read battery voltage
   batteryVoltage *= 2;    // we divided by 2, so multiply back
   batteryVoltage *= 3.3;  // Multiply by 3.3V, our reference voltage
   batteryVoltage /= 1024; // convert to voltage
-  Serial.println("finished battery conversion");
-  Serial.println(FreeMem());
 
   display.clearBuffer();
   display.setTextSize(2);
   display.setTextColor(EPD_DARK);
   display.setCursor(5, 5);
   display.print(F("         Indoor  Outdoor"));
-  Serial.println(FreeMem());
   
-  Serial.println(DB);
-  Serial.println(outDB);
   display.setCursor(5, 30);
-  Serial.println("after setting cursor");
   display.print(F("Temp (F)  "));
-  Serial.println("after saying Temp (F)");
   display.print(DB, 1);
-  Serial.println("after printing DB");
   display.print(F("    "));
-  Serial.println("after printing spaces");
   display.print(outDB);
-  Serial.println("after printing outDB");
-  Serial.println(FreeMem());
 
-  Serial.println(RH);
-  Serial.println(outRH);
   display.setCursor(5, 55);
   display.print(F("RH   (%)  "));
   display.print(RH, 1);
   display.print(F("    "));
   display.print(outRH);
-  Serial.println(FreeMem());
 
-  Serial.println(WB);
-  Serial.println(DB);
-  Serial.println(outWBGT);
   display.setCursor(5, 80);
   display.setTextColor(EPD_BLACK);
   display.print(F("WBGT (F)  "));
   display.print(0.7*WB + 0.3*DB, 1);
   display.print(F("    "));
   display.print(outWBGT);
-  Serial.println(FreeMem());
 
-  Serial.println(batteryVoltage);
-  Serial.println(outVolt);
   display.setCursor(5, 105);
   display.setTextColor(EPD_DARK);
   display.print(F("Bat  (V)  "));
   display.print(batteryVoltage, 2);  
   display.print(F("    "));
   display.print(outVolt);
-  Serial.println(FreeMem());
 
-  Serial.println("Before lines");
   display.drawFastVLine(195, 0, 128, EPD_BLACK);
   display.drawFastVLine(105, 0, 128, EPD_BLACK);
   display.drawFastHLine(0, 25, 296, EPD_BLACK);
-  Serial.println("After lines");
-  Serial.println(FreeMem());
 
   display.setTextSize(1);
   display.setTextColor(EPD_BLACK);
@@ -241,12 +194,8 @@ void readAndDisplaySCD30(float DB, float RH, float WB, String RX)
   display.print(F("Last update:"));
   display.setCursor(5, 14);
   display.print(F("HH:MM"));
-  Serial.println("finished writing to display");
-  Serial.println(FreeMem());
 
   display.display();
-  Serial.println("end of display function");
-  Serial.println(FreeMem());
 }
 
 float wetBulbCalc(float DB, float RH){
