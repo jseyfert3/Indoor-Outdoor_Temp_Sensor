@@ -22,7 +22,7 @@ and so I have a record of the rx packet that crashes the micro...hopefully. Need
 card logging anyway.
 
 Jonathan Seyfert
-2023-10-22
+2024-12-28
 */
 
 #include "Adafruit_ThinkInk.h" // for e-ink display
