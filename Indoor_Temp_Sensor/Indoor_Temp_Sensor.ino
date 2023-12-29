@@ -16,10 +16,8 @@ Both units are built on a M0 powered Feather with RFM69 915 MHz radio (license f
 Cut e-ink ECS pin, soldered wire to move it to pin A1 on feather (GPIO 15 on M0 Feather)
 Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Feather)
 
-Currently working on the branch 1-indoor-sensor-freezes-up
-Trying to add SD data logging of packets so I don't need my computer to monitor serial port
-and so I have a record of the rx packet that crashes the micro...hopefully. Need to add SD
-card logging anyway.
+Current status is a stable build that doesn't hang, though it's still lacking the last update
+message to show if it's working or not (given the e-ink screen doesn't shut off when mCU stops running)
 
 Jonathan Seyfert
 2024-12-28
@@ -56,7 +54,7 @@ Jonathan Seyfert
 File logfile; // name to use for file object
 
 extern "C" char *sbrk(int i);  // for FreeMem()
-const unsigned long updateTime = 30000;  // How often to update display
+const unsigned long updateTime = 180000;  // How often to update display
 unsigned long timer = 0;  // Used to check if it's time to update display
 const int radioSendTime = 15000;  // Send data via radio every 15 seconds
 float batteryVoltage = 0; // for measuring battery voltage
