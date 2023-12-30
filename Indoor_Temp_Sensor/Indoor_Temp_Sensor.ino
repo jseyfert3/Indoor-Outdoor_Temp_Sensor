@@ -171,6 +171,14 @@ void loop() {
     displayMinMax();
     timer = millis() - updateTime + minMaxDisplayTime; //forces display update after minMaxDisplayTime
   }
+
+  if(buttonC.pressed()) {
+    display.clearBuffer();
+    display.setCursor(5, 5);
+    display.setTextSize(2);
+    display.print("YOU DID IT!");
+    display.display();
+  }
 }
 
 void readAndDisplaySCD30(float DB, float RH, float WB, String RX)
