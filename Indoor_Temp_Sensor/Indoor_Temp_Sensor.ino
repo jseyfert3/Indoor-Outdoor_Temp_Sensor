@@ -16,11 +16,10 @@ Both units are built on a M0 powered Feather with RFM69 915 MHz radio (license f
 Cut e-ink ECS pin, soldered wire to move it to pin A1 on feather (GPIO 15 on M0 Feather)
 Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Feather)
 
-Current status is a stable build that doesn't hang, though it's still lacking the last update
-message to show if it's working or not (given the e-ink screen doesn't shut off when mCU stops running)
+Current status is a stable build that doesn't hang, with last update time.
 
 Jonathan Seyfert
-2024-12-28
+2024-12-29
 */
 
 #include "Adafruit_ThinkInk.h" // for e-ink display
@@ -28,6 +27,7 @@ Jonathan Seyfert
 #include <SPI.h>  // For RFM69 & e-ink & SD card
 #include <RH_RF69.h>  // For RFM69
 #include <SD.h> // For SD card logging
+#include "RTClib.h" // For RTC
 
 // The following is for the e-ink display
 // Note that the e-Ink Wing has an SD card CS on pin 5, do not use on accident!
@@ -52,6 +52,7 @@ Jonathan Seyfert
 #define SDCS          16 // CS for RTC datalogging wing SD card
 
 File logfile; // name to use for file object
+RTC_PCF8523 rtc; // for RTC
 
 extern "C" char *sbrk(int i);  // for FreeMem()
 const unsigned long updateTime = 180000;  // How often to update display
@@ -60,6 +61,7 @@ const int radioSendTime = 15000;  // Send data via radio every 15 seconds
 float batteryVoltage = 0; // for measuring battery voltage
 String rxPacket;
 char outDB[5], outWBGT[5], outRH[6], outVolt[5]; // for parsing outdoor sensor values from Rx packet
+char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}; // for RTC
 
 Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
 ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY); // Instance for ThinkInk FeatherWing
@@ -102,6 +104,8 @@ void setup()
   }
 
   logfile = SD.open("crashLog", FILE_WRITE); // Open file for logging crash as writable file
+  rtc.begin(); // Start RTC
+  rtc.start(); // In case RTC was stopped, this will start it
 
   // The below updates the display once on power-up
   sensors_event_t humidity, temp; // for SHT45
@@ -186,12 +190,15 @@ void readAndDisplaySCD30(float DB, float RH, float WB, String RX)
   display.drawFastVLine(105, 0, 128, EPD_BLACK);
   display.drawFastHLine(0, 25, 296, EPD_BLACK);
 
+  DateTime now = rtc.now(); // Get the current time to update the display with
   display.setTextSize(1);
   display.setTextColor(EPD_BLACK);
   display.setCursor(5, 4);
   display.print(F("Last update:"));
   display.setCursor(5, 14);
-  display.print(F("HH:MM"));
+  display.print(now.hour(), DEC);
+  display.print(":");
+  display.print(now.minute(), DEC);
 
   display.display();
 }
