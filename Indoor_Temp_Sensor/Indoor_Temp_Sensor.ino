@@ -19,7 +19,7 @@ Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Fe
 Current status is a stable build that doesn't hang, with last update time.
 
 Jonathan Seyfert
-2024-12-29
+2024-12-30
 */
 
 #include "Adafruit_ThinkInk.h" // for e-ink display
@@ -28,6 +28,7 @@ Jonathan Seyfert
 #include <RH_RF69.h>  // For RFM69
 #include <SD.h> // For SD card logging
 #include "RTClib.h" // For RTC
+#include "Button.h" //for buttons
 
 // The following is for the e-ink display
 // Note that the e-Ink Wing has an SD card CS on pin 5, do not use on accident!
@@ -36,9 +37,9 @@ Jonathan Seyfert
 #define EPD_BUSY    -1  // can set to -1 to not use a pin (will wait a fixed delay) <- Available but not connected
 #define SRAM_CS     6  // can set to -1 to not use a pin (uses a lot of RAM!)
 #define EPD_RESET   -1  // can set to -1 and share with chip Reset (can't deep sleep)
-#define BTN_A       11  // Button A on e-Ink
-#define BTN_B       12  // Button B on e-Ink
-#define BTN_C       13  // Button C on e-Ink
+// #define BTN_A       11  // Button A on e-Ink
+// #define BTN_B       12  // Button B on e-Ink
+// #define BTN_C       13  // Button C on e-Ink
 #define VBATPIN A7 // Internal battery voltage divider measurement pin
 #define RTC_SD_CS 16 // RTC wing SD chip select pin
 #define COLOR1 EPD_BLACK  // for ThinkInk Display
@@ -53,6 +54,9 @@ Jonathan Seyfert
 
 File logfile; // name to use for file object
 RTC_PCF8523 rtc; // for RTC
+Button buttonA(11);
+Button buttonB(12);
+Button buttonC(13);
 
 extern "C" char *sbrk(int i);  // for FreeMem()
 const unsigned long updateTime = 180000;  // How often to update display
@@ -62,6 +66,10 @@ float batteryVoltage = 0; // for measuring battery voltage
 String rxPacket;
 char outDB[5], outWBGT[5], outRH[6], outVolt[5]; // for parsing outdoor sensor values from Rx packet
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}; // for RTC
+DateTime bootTime; // To display time at boot, time for min/max
+float indoorMax; // To record indoor max temp
+float indoorMin; // To record indoor min temp
+const unsigned long minMaxDisplayTime = 15000; // How long to display the Min/Max screen
 
 Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
 ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY); // Instance for ThinkInk FeatherWing
@@ -70,6 +78,12 @@ RH_RF69 rf69(RFM69_CS, RFM69_INT); // RFM69 Singleton instance
 void setup()
 {
   Serial.begin(115200);  // for testing
+
+  bootTime = rtc.now(); // Record the DateTime of boot
+
+  buttonA.begin();
+  buttonB.begin();
+  buttonC.begin();
 
   // pinMode(8, OUTPUT);  // When not using RFM, need to keep pin 8 high when sharing SPI bus
   // digitalWrite(8, HIGH);
@@ -110,7 +124,9 @@ void setup()
   // The below updates the display once on power-up
   sensors_event_t humidity, temp; // for SHT45
   sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
-  float dryBulb = temp.temperature; // Convert SHT45 temp from C to F
+  float dryBulb = temp.temperature; // Get indoor temp
+  indoorMin = dryBulb; //set indoor min to current for new boot
+  indoorMax = dryBulb; //set indoor max to current for new boot
   float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
   readAndDisplaySCD30(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, "Waiting...");
 
@@ -118,7 +134,7 @@ void setup()
 }
 
 void loop() {
-   if (rf69.available()) {
+  if (rf69.available()) {
     uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
     uint8_t len = sizeof(buf);
     if (rf69.recv(buf, &len))
@@ -133,17 +149,27 @@ void loop() {
       Serial.print("RSSI: ");
       Serial.println(rf69.lastRssi(), DEC);
     }
-   }
+  }
   
   if(millis() - timer >= updateTime)
   {
     sensors_event_t humidity, temp; // for SHT45
     sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
     float dryBulb = temp.temperature; // Get SHT45 temp
+    if(dryBulb > indoorMax) {
+      indoorMax = dryBulb;
+    }
+    if(dryBulb < indoorMin) {
+      indoorMin = dryBulb;
+    }
     float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
     readAndDisplaySCD30(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, rxPacket);
     timer = millis();
   }
+
+  // if(buttonB.pressed()) {
+  //   displayMinMax();
+  // }
 }
 
 void readAndDisplaySCD30(float DB, float RH, float WB, String RX)
@@ -211,4 +237,34 @@ float wetBulbCalc(float DB, float RH){
 int FreeMem () {  //http://forum.arduino.cc/index.php?topic=365830.msg2542879#msg2542879
   char stack_dummy = 0;
   return &stack_dummy - sbrk(0);
+}
+
+void displayMinMax() {
+  display.setCursor(5, 5);
+  display.setTextSize(2);
+  display.setTextColor(EPD_BLACK);
+  display.print(F("MIN/MAX"));
+  display.setCursor(5, 30);
+  display.setTextSize(1);
+  display.print(F("Since "));
+  display.print(bootTime.year(), DEC);
+  display.print(F("-"));
+  display.print(bootTime.month(), DEC);
+  display.print(F("-"));
+  display.print(bootTime.day(), DEC);
+  display.print(F(" "));
+  display.print(bootTime.hour(), DEC);
+  display.print(F(":"));
+  display.print(bootTime.minute(), DEC);
+
+  display.setCursor(5, 55);
+  display.setTextSize(2);
+  display.print(F("Indoor Min/Max: "));
+  display.print(indoorMin);
+  display.print(F("/"));
+  display.print(indoorMax);
+
+  display.display();
+
+  delay(minMaxDisplayTime);
 }
