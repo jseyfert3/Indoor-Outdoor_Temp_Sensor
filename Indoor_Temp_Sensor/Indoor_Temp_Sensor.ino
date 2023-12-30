@@ -79,8 +79,6 @@ void setup()
 {
   Serial.begin(115200);  // for testing
 
-  bootTime = rtc.now(); // Record the DateTime of boot
-
   buttonA.begin();
   buttonB.begin();
   buttonC.begin();
@@ -120,6 +118,8 @@ void setup()
   logfile = SD.open("crashLog", FILE_WRITE); // Open file for logging crash as writable file
   rtc.begin(); // Start RTC
   rtc.start(); // In case RTC was stopped, this will start it
+
+  bootTime = rtc.now(); // Record the DateTime of boot
 
   // The below updates the display once on power-up
   sensors_event_t humidity, temp; // for SHT45
@@ -167,9 +167,10 @@ void loop() {
     timer = millis();
   }
 
-  // if(buttonB.pressed()) {
-  //   displayMinMax();
-  // }
+  if(buttonB.pressed()) {
+    displayMinMax();
+    timer = millis() - updateTime + minMaxDisplayTime; //forces display update after minMaxDisplayTime
+  }
 }
 
 void readAndDisplaySCD30(float DB, float RH, float WB, String RX)
@@ -240,6 +241,8 @@ int FreeMem () {  //http://forum.arduino.cc/index.php?topic=365830.msg2542879#ms
 }
 
 void displayMinMax() {
+  display.clearBuffer();
+
   display.setCursor(5, 5);
   display.setTextSize(2);
   display.setTextColor(EPD_BLACK);
@@ -257,14 +260,12 @@ void displayMinMax() {
   display.print(F(":"));
   display.print(bootTime.minute(), DEC);
 
-  display.setCursor(5, 55);
+  display.setCursor(5, 45);
   display.setTextSize(2);
-  display.print(F("Indoor Min/Max: "));
-  display.print(indoorMin);
+  display.print(F("Indoor: "));
+  display.print(indoorMin*1.8 + 32);
   display.print(F("/"));
-  display.print(indoorMax);
+  display.print(indoorMax*1.8 + 32);
 
   display.display();
-
-  delay(minMaxDisplayTime);
 }
