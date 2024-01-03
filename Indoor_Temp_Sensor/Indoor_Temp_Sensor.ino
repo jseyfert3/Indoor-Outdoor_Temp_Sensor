@@ -19,7 +19,7 @@ Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Fe
 Current status is a stable build that doesn't hang, with last update time.
 
 Jonathan Seyfert
-2024-12-30
+2024-01-02
 */
 
 #include "Adafruit_ThinkInk.h" // for e-ink display
@@ -49,14 +49,14 @@ Jonathan Seyfert
 #define RFM69_CS      8  // RFM69 pins on M0 Feather
 #define RFM69_INT     3  // RFM69 pins on M0 Feather
 #define RFM69_RST     4  // RFM69 pins on M0 Feather
-#define LED           13 // RFM69 pins on M0 Feather
+#define LED           13 // RFM69 pins on M0 Feather - why does RFM69 use the LED?
 #define SDCS          16 // CS for RTC datalogging wing SD card
 
 File logfile; // name to use for file object
 RTC_PCF8523 rtc; // for RTC
-Button buttonA(11);
-Button buttonB(12);
-Button buttonC(13);
+Button buttonA(11); // Button A on e-Ink display
+Button buttonB(12); // Button B on e-Ink display
+Button buttonC(13); // Button C on e-Ink display
 
 extern "C" char *sbrk(int i);  // for FreeMem()
 const unsigned long updateTime = 180000;  // How often to update display
@@ -79,7 +79,7 @@ void setup()
 {
   Serial.begin(115200);  // for testing
 
-  buttonA.begin();
+  buttonA.begin(); // Initialize the button library function buttons
   buttonB.begin();
   buttonC.begin();
 
@@ -112,10 +112,10 @@ void setup()
   // see if the card is present and can be initialized:
   if (!SD.begin(SDCS)) {
     Serial.println("Card init. failed!");
-    while(1);
+    //while(1);
   }
 
-  logfile = SD.open("crashLog", FILE_WRITE); // Open file for logging crash as writable file
+  logfile = SD.open("testLog", FILE_WRITE); // Open file for logging crash as writable file
   rtc.begin(); // Start RTC
   rtc.start(); // In case RTC was stopped, this will start it
 
@@ -178,6 +178,14 @@ void loop() {
     display.setTextSize(2);
     display.print("YOU DID IT!");
     display.display();
+
+    DateTime logTime = rtc.now(); // create variable for logging test
+    String logString = ""; // String object for logging
+    logString += logTime.hour();
+    logString += logTime.minute();
+    logString += logTime.second();
+    logfile.println(logString); // Test functioning of SD card logging by recording time when pressing button C
+    logfile.println("The button was pressed!");
   }
 }
 
