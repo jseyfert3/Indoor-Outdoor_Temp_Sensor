@@ -115,7 +115,6 @@ void setup()
     //while(1);
   }
 
-  logfile = SD.open("testLog", FILE_WRITE); // Open file for logging crash as writable file
   rtc.begin(); // Start RTC
   rtc.start(); // In case RTC was stopped, this will start it
 
@@ -178,6 +177,8 @@ void loop() {
     display.setTextSize(2);
     display.print("YOU DID IT!");
     display.display();
+  
+    logfile = SD.open("testLog", FILE_WRITE); // Open file for logging crash as writable file
 
     DateTime logTime = rtc.now(); // create variable for logging test
     String logString = ""; // String object for logging
@@ -186,6 +187,7 @@ void loop() {
     logString += logTime.second();
     logfile.println(logString); // Test functioning of SD card logging by recording time when pressing button C
     logfile.println("The button was pressed!");
+    logfile.close();
   }
 }
 
