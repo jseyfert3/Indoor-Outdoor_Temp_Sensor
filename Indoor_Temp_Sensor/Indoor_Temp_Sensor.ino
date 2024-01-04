@@ -127,7 +127,7 @@ void setup()
   indoorMin = dryBulb; //set indoor min to current for new boot
   indoorMax = dryBulb; //set indoor max to current for new boot
   float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
-  readAndDisplaySCD30(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, "Waiting...");
+  updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, "Waiting...");
 
   SPI.usingInterrupt(digitalPinToInterrupt(RFM69_INT)); // Apparently the RadioHead library doesn't register it does SPI within an interrupt, so this is required to avoid conflicts
 }
@@ -162,7 +162,8 @@ void loop() {
       indoorMin = dryBulb;
     }
     float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
-    readAndDisplaySCD30(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, rxPacket);
+    updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, rxPacket);
+    logTempData(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, rxPacket);
     timer = millis();
   }
 
@@ -183,7 +184,9 @@ void loop() {
     DateTime logTime = rtc.now(); // create variable for logging test
     String logString = ""; // String object for logging
     logString += logTime.hour();
+    logString += ":";
     logString += logTime.minute();
+    logString += ":";
     logString += logTime.second();
     logfile.println(logString); // Test functioning of SD card logging by recording time when pressing button C
     logfile.println("The button was pressed!");
@@ -191,8 +194,7 @@ void loop() {
   }
 }
 
-void readAndDisplaySCD30(float DB, float RH, float WB, String RX)
-{
+void updateDisplay(float DB, float RH, float WB, String RX) {
   sscanf(RX.c_str(), "%s %s %s %s", &outDB, &outWBGT, &outRH, &outVolt); // parse packet to values
   batteryVoltage = analogRead(VBATPIN); // read battery voltage
   batteryVoltage *= 2;    // we divided by 2, so multiply back
@@ -286,4 +288,31 @@ void displayMinMax() {
   display.print(indoorMax*1.8 + 32);
 
   display.display();
+}
+
+void logTempData(float DB, float RH, float WB, String RX) {
+  logfile = SD.open("datalog", FILE_WRITE); // Open file for logging crash as writable file
+  String logString = "";
+
+  DateTime logTime = rtc.now(); // create variable for logging test
+  logString += logTime.hour();
+  logString += ":";
+  logString += logTime.minute();
+  logString += ":";
+  logString += logTime.second();
+  logString += ",";
+  logString += outDB;
+  logString += ",";
+  logString += outRH;
+  logString += ",";
+  logString += outWBGT;
+  logString += ",";
+  logString += DB;
+  logString += ",";
+  logString += RH;
+  logString += ",";
+  logString += 0.7*WB + 0.3*DB;
+  
+  logfile.println(logString); // Test functioning of SD card logging by recording time when pressing button C
+  logfile.close();
 }
