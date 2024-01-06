@@ -5,7 +5,7 @@ Outdoor unit has RHT45 sensor and goes to sleep to save battery.
 Both units are built on a M0 powered Feather with RFM69 915 MHz radio (license free).
 
 Jonathan Seyfert
-2023-08-15
+2024-01-06
  
 Cut e-ink ECS pin, soldered wire to move it to pin A1 on feather (GPIO 15 on M0 Feather)
 Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Feather)
@@ -13,7 +13,8 @@ Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Fe
 
 #include <SPI.h>  // For RFM69
 #include <RH_RF69.h> // For RFM69
-#include "Adafruit_SHT4x.h" // for SHT45 temp/humidity sensor
+#include <Adafruit_SHT4x.h> // for SHT45 temp/humidity sensor
+#include <Adafruit_SleepyDog.h> // for watchdog sleep for power savings
 
 #define RF69_FREQ 915.0  // Frequency of RFM69
 #define RFM69_CS      8  // RFM69 pins on M0 Feather
@@ -21,6 +22,7 @@ Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Fe
 #define RFM69_RST     4  // RFM69 pins on M0 Feather
 #define LED           13 // Built-in LED on M0 Feather
 #define VBATPIN A7 // Internal battery voltage divider measurement pin
+#define SHTPWRPIN     5
 
 Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
 RH_RF69 rf69(RFM69_CS, RFM69_INT); // Singleton instance of the radio driver
@@ -42,6 +44,9 @@ void setup() {
   digitalWrite(RFM69_RST, LOW);
   delay(10);
 
+  pinMode(SHTPWRPIN, OUTPUT); // Initialize pin for SHT45 power control
+  digitalWrite(SHTPWRPIN, HIGH); //turn on SHT45 for initialization
+  delay(100);
   sht4.begin(); // initialize SHT45 sensor
   sht4.setPrecision(SHT4X_HIGH_PRECISION); // can use MED or LOW, HIGH takes longer
   sht4.setHeater(SHT4X_NO_HEATER); // can use 6 different heater options, see example
@@ -56,6 +61,9 @@ void setup() {
 }
 
 void loop() {
+  digitalWrite(SHTPWRPIN, HIGH); // turn on SHT45
+  delay(100);
+
   sensors_event_t humidity, temp; // for SHT45
   sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
   float dryBulb = temp.temperature; // Get SHT45 temp
@@ -95,8 +103,10 @@ void loop() {
   //send the packet
   rf69.send((uint8_t *)radioPacket, strlen(radioPacket));
   rf69.waitPacketSent();
-
-  delay(10000);
+  
+  rf69.sleep(); //put radio to sleep to save power
+  digitalWrite(SHTPWRPIN, LOW); // turn off SHT45 for power saving while sleeping
+  Watchdog.sleep(15000); // sleep for 15 seconds
 }
 
 float wetBulbCalc(float DB, float RH){
