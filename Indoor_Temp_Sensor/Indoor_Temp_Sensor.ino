@@ -106,6 +106,9 @@ void setup()
   uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
                     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
   rf69.setEncryptionKey(key);  // Set RFM69 encryption
+  
+  display.begin(THINKINK_GRAYSCALE4);  // Initialize e-Ink display
+  delay(5000);  // Pause for 5 seconds to allow sensor time to initialize before displaying inital values
 
   if(!sht4.begin()) { // initialize SHT45 sensor
     Serial.println(F("Unable to initialize SHT45!"));
@@ -114,10 +117,7 @@ void setup()
 
   sht4.setPrecision(SHT4X_HIGH_PRECISION); // can use MED or LOW, HIGH takes longer
   sht4.setHeater(SHT4X_NO_HEATER); // can use 6 different heater options, see example
-  
-  display.begin(THINKINK_GRAYSCALE4);  // Initialize e-Ink display
-  delay(5000);  // Pause for 5 seconds to allow sensor time to initialize before displaying inital values
-
+ 
   // see if the card is present and can be initialized:
   if (!SD.begin(SDCS)) {
     Serial.println(F("Card init. failed!"));
