@@ -55,7 +55,6 @@ Jonathan Seyfert
 #define LED           13 // RFM69 pins on M0 Feather - why does RFM69 use the LED?
 #define SDCS          16 // CS for RTC datalogging wing SD card
 
-File logfile; // name to use for file object
 RTC_PCF8523 rtc; // for RTC
 Button buttonA(11); // Button A on e-Ink display
 Button buttonB(12); // Button B on e-Ink display
@@ -81,6 +80,8 @@ RH_RF69 rf69(RFM69_CS, RFM69_INT); // RFM69 Singleton instance
 
 void setup()
 {
+  SPI.usingInterrupt(digitalPinToInterrupt(RFM69_INT)); // Apparently the RadioHead library doesn't register it does SPI within an interrupt, so this is required to avoid conflicts
+
   Serial.begin(115200);  // for testing
 
   buttonA.begin(); // Initialize the button library function buttons
@@ -106,7 +107,11 @@ void setup()
                     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
   rf69.setEncryptionKey(key);  // Set RFM69 encryption
 
-  sht4.begin(); // initialize SHT45 sensor
+  if(!sht4.begin()) { // initialize SHT45 sensor
+    Serial.println(F("Unable to initialize SHT45!"));
+    displayError(F("Unable to initialize SHT45!"));
+  }
+
   sht4.setPrecision(SHT4X_HIGH_PRECISION); // can use MED or LOW, HIGH takes longer
   sht4.setHeater(SHT4X_NO_HEATER); // can use 6 different heater options, see example
   
@@ -115,13 +120,16 @@ void setup()
 
   // see if the card is present and can be initialized:
   if (!SD.begin(SDCS)) {
-    Serial.println("Card init. failed!");
-    //while(1);
+    Serial.println(F("Card init. failed!"));
+    displayError(F("Unable to initialize SD card!"));
   }
 
-  rtc.begin(); // Start RTC
-  rtc.start(); // In case RTC was stopped, this will start it
+  if(!rtc.begin()) {
+    Serial.println(F("RTC init. failed!"));
+    displayError(F("Unable to initialize RTC!"));
+  }
 
+  rtc.start(); // In case RTC was stopped, this will start it
   bootTime = rtc.now(); // Record the DateTime of boot
 
   // The below updates the display once on power-up
@@ -132,8 +140,6 @@ void setup()
   indoorMax = dryBulb; //set indoor max to current for new boot
   float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
   updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, "Waiting...");
-
-  SPI.usingInterrupt(digitalPinToInterrupt(RFM69_INT)); // Apparently the RadioHead library doesn't register it does SPI within an interrupt, so this is required to avoid conflicts
 }
 
 void loop() {
@@ -155,7 +161,7 @@ void loop() {
     }
   }
   
-  if(millis() - timer >= updateTime)
+  if(millis() - timer >= updateTime) // run every updateTime ms interval
   {
     sensors_event_t humidity, temp; // for SHT45
     sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
@@ -175,27 +181,6 @@ void loop() {
   if(buttonB.pressed()) {
     displayMinMax();
     timer = millis() - updateTime + minMaxDisplayTime; //forces display update after minMaxDisplayTime
-  }
-
-  if(buttonC.pressed()) {
-    display.clearBuffer();
-    display.setCursor(5, 5);
-    display.setTextSize(2);
-    display.print("YOU DID IT!");
-    display.display();
-  
-    logfile = SD.open("testLog", FILE_WRITE); // Open file for logging crash as writable file
-
-    DateTime logTime = rtc.now(); // create variable for logging test
-    String logString = ""; // String object for logging
-    logString += logTime.hour();
-    logString += ":";
-    logString += logTime.minute();
-    logString += ":";
-    logString += logTime.second();
-    logfile.println(logString); // Test functioning of SD card logging by recording time when pressing button C
-    logfile.println("The button was pressed!");
-    logfile.close();
   }
 }
 
@@ -301,10 +286,8 @@ void displayMinMax() {
 }
 
 void logTempData(float DB, float RH, float WB, String RX) {
-  logfile = SD.open("datalog", FILE_WRITE); // Open file for logging crash as writable file
   String logString = "";
-
-  DateTime logTime = rtc.now(); // create variable for logging test
+  DateTime logTime = rtc.now(); // variable for logging time of log
   logString += logTime.year();
   logString += "-";
   logString += logTime.month();
@@ -343,7 +326,37 @@ void logTempData(float DB, float RH, float WB, String RX) {
   logString += ",";
   logString += rf69.lastRssi();
 
-  logfile.println(logString); // print to file
-  logfile.close(); // close file to ensure it was written
-  Serial.println(logString); // for testing
+  File logFile = SD.open("datalog", FILE_WRITE); // Open file for logging crash as writable file
+  if(logFile) {
+    logFile.println(logString); // print to file
+    logFile.close(); // close file to ensure it was written
+    Serial.println(F("Logged to datalog.txt!")); // for debug
+  }
+  else {
+    Serial.println(F("Unable to open datalog.txt!")); // for debug
+    displayError(F("Unable to open datalog.txt!")); // display error
+  }
+  Serial.println(logString); // for debug
+}
+
+void displayError(String error) {
+  display.clearBuffer();
+  display.setCursor(5, 5);
+  display.setTextSize(2);
+  display.setTextColor(EPD_BLACK);
+  display.print(F("ERROR! "));
+  display.print(error);
+  display.setCursor(5, 55);
+  display.setTextSize(1);
+  display.print(F("Press button C to continue, ignoring error."));
+  display.setCursor(5, 70);
+  display.print(F("The item that errored will likely not work until fixed."));
+  display.display();
+
+  while(!buttonC.pressed()); // stop on this screen until button C is pressed
+
+  display.setCursor(5, 100);
+  display.print(F("Button C pressed, continuing to proceed, ignoring error..."));
+  display.display();
+  delay(5000);
 }
