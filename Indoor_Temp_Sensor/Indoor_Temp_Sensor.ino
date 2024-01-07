@@ -16,10 +16,13 @@ Both units are built on a M0 powered Feather with RFM69 915 MHz radio (license f
 Cut e-ink ECS pin, soldered wire to move it to pin A1 on feather (GPIO 15 on M0 Feather)
 Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Feather)
 
-Current status is a stable build that doesn't hang, with last update time.
+Current status is a stable build. 
+  Has last update time for indoor & outdoor time displayed
+  Logs inside and outside data in CSV format on SD card
+    - Format is inside time, inside temp, inside RH, inside WBGT, outside time, outside temp, outside RH, outside WBGT, RSSI
 
 Jonathan Seyfert
-2024-01-02
+2024-01-07
 */
 
 #include "Adafruit_ThinkInk.h" // for e-ink display
@@ -67,6 +70,7 @@ String rxPacket;
 char outDB[5], outWBGT[5], outRH[6], outVolt[5]; // for parsing outdoor sensor values from Rx packet
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}; // for RTC
 DateTime bootTime; // To display time at boot, time for min/max
+DateTime outRxTime; // To display time outdoor sensor last updated
 float indoorMax; // To record indoor max temp
 float indoorMin; // To record indoor min temp
 const unsigned long minMaxDisplayTime = 15000; // How long to display the Min/Max screen
@@ -147,6 +151,7 @@ void loop() {
       Serial.println(rxPacket); // rx format is dryBulb/wetBulb/humdity/battery voltage as XX.X XX.X XX.X X.XX
       Serial.print("RSSI: ");
       Serial.println(rf69.lastRssi(), DEC);
+      outRxTime = rtc.now(); // Get time, so we can display time outside data was last received
     }
   }
   
@@ -243,9 +248,14 @@ void updateDisplay(float DB, float RH, float WB, String RX) {
   display.setCursor(5, 4);
   display.print(F("Last update:"));
   display.setCursor(5, 14);
+  display.print("I-"); // indoor display update time
   display.print(now.hour(), DEC);
   display.print(":");
   display.print(now.minute(), DEC);
+  display.print("  O-"); // outdoor display update time
+  display.print(outRxTime.hour(), DEC);
+  display.print(":");
+  display.print(outRxTime.minute(), DEC);
 
   display.display();
 }
@@ -295,11 +305,35 @@ void logTempData(float DB, float RH, float WB, String RX) {
   String logString = "";
 
   DateTime logTime = rtc.now(); // create variable for logging test
+  logString += logTime.year();
+  logString += "-";
+  logString += logTime.month();
+  logString += "-";
+  logString += logTime.day();
+  logString += " ";
   logString += logTime.hour();
   logString += ":";
   logString += logTime.minute();
   logString += ":";
   logString += logTime.second();
+  logString += ",";
+  logString += DB;
+  logString += ",";
+  logString += RH;
+  logString += ",";
+  logString += 0.7*WB + 0.3*DB;
+  logString += ",";
+  logString += outRxTime.year();
+  logString += "-";
+  logString += outRxTime.month();
+  logString += "-";
+  logString += outRxTime.day();
+  logString += " ";
+  logString += outRxTime.hour();
+  logString += ":";
+  logString += outRxTime.minute();
+  logString += ":";
+  logString += outRxTime.second();
   logString += ",";
   logString += outDB;
   logString += ",";
@@ -307,12 +341,9 @@ void logTempData(float DB, float RH, float WB, String RX) {
   logString += ",";
   logString += outWBGT;
   logString += ",";
-  logString += DB;
-  logString += ",";
-  logString += RH;
-  logString += ",";
-  logString += 0.7*WB + 0.3*DB;
-  
-  logfile.println(logString); // Test functioning of SD card logging by recording time when pressing button C
-  logfile.close();
+  logString += rf69.lastRssi();
+
+  logfile.println(logString); // print to file
+  logfile.close(); // close file to ensure it was written
+  Serial.println(logString); // for testing
 }
