@@ -80,8 +80,6 @@ RH_RF69 rf69(RFM69_CS, RFM69_INT); // RFM69 Singleton instance
 
 void setup()
 {
-  SPI.usingInterrupt(digitalPinToInterrupt(RFM69_INT)); // Apparently the RadioHead library doesn't register it does SPI within an interrupt, so this is required to avoid conflicts
-
   Serial.begin(115200);  // for testing
 
   buttonA.begin(); // Initialize the button library function buttons
@@ -106,6 +104,7 @@ void setup()
   uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
                     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
   rf69.setEncryptionKey(key);  // Set RFM69 encryption
+  SPI.usingInterrupt(digitalPinToInterrupt(RFM69_INT)); // Apparently the RadioHead library doesn't register it does SPI within an interrupt, so this is required to avoid conflicts
   
   display.begin(THINKINK_GRAYSCALE4);  // Initialize e-Ink display
   delay(5000);  // Pause for 5 seconds to allow sensor time to initialize before displaying inital values
@@ -348,12 +347,15 @@ void displayError(String error) {
   display.print(error);
   display.setCursor(5, 55);
   display.setTextSize(1);
-  display.print(F("Press button C to continue, ignoring error."));
+  display.print(F("Press button C to continue and ignore error."));
   display.setCursor(5, 70);
   display.print(F("The item that errored will likely not work until fixed."));
   display.display();
+//  delay(7000); // if no delay, goes into while() loop before display updates. Looks like it hangs up, though pressing buttonC will get it going again
 
-  while(!buttonC.pressed()); // stop on this screen until button C is pressed
+  while(!buttonC.pressed()) { // stop on this screen until button C is pressed
+    delay(50);
+  }
 
   display.setCursor(5, 100);
   display.print(F("Button C pressed, continuing to proceed, ignoring error..."));
