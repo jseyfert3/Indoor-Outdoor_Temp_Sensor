@@ -23,7 +23,7 @@ Current status is a stable build.
   Added error message screen
 
 Jonathan Seyfert
-2024-01-08
+2024-01-09
 */
 
 #include "Adafruit_ThinkInk.h" // for e-ink display
@@ -124,9 +124,9 @@ void setup()
     displayError(F("Unable to initialize SD card!"));
   }
 
-  if(!rtc.begin()) {
-    Serial.println(F("RTC init. failed!"));
-    displayError(F("Unable to initialize RTC!"));
+  if(!rtc.begin()) { // initialize RTC
+    Serial.println(F("RTC init. failed!")); // print error over USB Serial port
+    displayError(F("Unable to initialize RTC!")); // display error on screen
   }
 
   rtc.start(); // In case RTC was stopped, this will start it
@@ -174,7 +174,7 @@ void loop() {
     }
     float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
     updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, rxPacket);
-    logTempData(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, rxPacket);
+    logTempData(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32);
     timer = millis();
   }
 
@@ -185,7 +185,7 @@ void loop() {
 }
 
 void updateDisplay(float DB, float RH, float WB, String RX) {
-  sscanf(RX.c_str(), "%s %s %s %s", &outDB, &outWBGT, &outRH, &outVolt); // parse packet to values
+  sscanf(RX.c_str(), "%4s %4s %5s %4s", outDB, outWBGT, outRH, outVolt); // parse packet to values
   batteryVoltage = analogRead(VBATPIN); // read battery voltage
   batteryVoltage *= 2;    // we divided by 2, so multiply back
   batteryVoltage *= 3.3;  // Multiply by 3.3V, our reference voltage
@@ -285,7 +285,7 @@ void displayMinMax() {
   display.display();
 }
 
-void logTempData(float DB, float RH, float WB, String RX) {
+void logTempData(float DB, float RH, float WB) {
   String logString = "";
   DateTime logTime = rtc.now(); // variable for logging time of log
   logString += logTime.year();
