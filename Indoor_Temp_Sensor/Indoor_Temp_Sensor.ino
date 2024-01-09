@@ -20,9 +20,10 @@ Current status is a stable build.
   Has last update time for indoor & outdoor time displayed
   Logs inside and outside data in CSV format on SD card
     - Format is inside time, inside temp, inside RH, inside WBGT, outside time, outside temp, outside RH, outside WBGT, RSSI
+  Added error message screen
 
 Jonathan Seyfert
-2024-01-07
+2024-01-08
 */
 
 #include "Adafruit_ThinkInk.h" // for e-ink display
@@ -80,8 +81,6 @@ RH_RF69 rf69(RFM69_CS, RFM69_INT); // RFM69 Singleton instance
 
 void setup()
 {
-  SPI.usingInterrupt(digitalPinToInterrupt(RFM69_INT)); // Apparently the RadioHead library doesn't register it does SPI within an interrupt, so this is required to avoid conflicts
-
   Serial.begin(115200);  // for testing
 
   buttonA.begin(); // Initialize the button library function buttons
@@ -106,6 +105,7 @@ void setup()
   uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
                     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
   rf69.setEncryptionKey(key);  // Set RFM69 encryption
+  SPI.usingInterrupt(digitalPinToInterrupt(RFM69_INT)); // Apparently the RadioHead library doesn't register it does SPI within an interrupt, so this is required to avoid conflicts
   
   display.begin(THINKINK_GRAYSCALE4);  // Initialize e-Ink display
   delay(5000);  // Pause for 5 seconds to allow sensor time to initialize before displaying inital values
@@ -178,7 +178,7 @@ void loop() {
     timer = millis();
   }
 
-  if(buttonB.pressed()) {
+  if(buttonB.pressed()) { // display the Min/Max temps recorded
     displayMinMax();
     timer = millis() - updateTime + minMaxDisplayTime; //forces display update after minMaxDisplayTime
   }
@@ -348,15 +348,16 @@ void displayError(String error) {
   display.print(error);
   display.setCursor(5, 55);
   display.setTextSize(1);
-  display.print(F("Press button C to continue, ignoring error."));
+  display.print(F("Press button C to continue and ignore error."));
   display.setCursor(5, 70);
   display.print(F("The item that errored will likely not work until fixed."));
+  delay(500); // for some reason, without a delay here, calling display() would hang the micro/crash it
   display.display();
 
-  while(!buttonC.pressed()); // stop on this screen until button C is pressed
+  while(!buttonC.pressed()) // stop on this screen until button C is pressed
 
   display.setCursor(5, 100);
   display.print(F("Button C pressed, continuing to proceed, ignoring error..."));
   display.display();
-  delay(5000);
+  delay(5000); // pause for reading time before proceeding
 }
