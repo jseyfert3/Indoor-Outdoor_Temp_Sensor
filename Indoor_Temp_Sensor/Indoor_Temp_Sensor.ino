@@ -61,7 +61,7 @@ Button buttonB(12); // Button B on e-Ink display
 Button buttonC(13); // Button C on e-Ink display
 
 extern "C" char *sbrk(int i);  // for FreeMem()
-const unsigned long updateTime = 180000;  // How often to update display
+const unsigned long updateTime = 18000;  // How often to update display
 unsigned long timer = 0;  // Used to check if it's time to update display
 const int radioSendTime = 15000;  // Send data via radio every 15 seconds
 float batteryVoltage = 0; // for measuring battery voltage
@@ -350,12 +350,10 @@ void displayError(String error) {
   display.print(F("Press button C to continue and ignore error."));
   display.setCursor(5, 70);
   display.print(F("The item that errored will likely not work until fixed."));
+  delay(500); // for some reason, without a delay here, calling display() would hang the micro/crash it
   display.display();
-//  delay(7000); // if no delay, goes into while() loop before display updates. Looks like it hangs up, though pressing buttonC will get it going again
 
-  while(!buttonC.pressed()) { // stop on this screen until button C is pressed
-    delay(50);
-  }
+  while(!buttonC.pressed()) // stop on this screen until button C is pressed
 
   display.setCursor(5, 100);
   display.print(F("Button C pressed, continuing to proceed, ignoring error..."));
