@@ -20,9 +20,10 @@ Current status is a stable build.
   Has last update time for indoor & outdoor time displayed
   Logs inside and outside data in CSV format on SD card
     - Format is inside time, inside temp, inside RH, inside WBGT, outside time, outside temp, outside RH, outside WBGT, RSSI
+  Added error message screen
 
 Jonathan Seyfert
-2024-01-07
+2024-01-08
 */
 
 #include "Adafruit_ThinkInk.h" // for e-ink display
@@ -61,7 +62,7 @@ Button buttonB(12); // Button B on e-Ink display
 Button buttonC(13); // Button C on e-Ink display
 
 extern "C" char *sbrk(int i);  // for FreeMem()
-const unsigned long updateTime = 18000;  // How often to update display
+const unsigned long updateTime = 180000;  // How often to update display
 unsigned long timer = 0;  // Used to check if it's time to update display
 const int radioSendTime = 15000;  // Send data via radio every 15 seconds
 float batteryVoltage = 0; // for measuring battery voltage
@@ -177,7 +178,7 @@ void loop() {
     timer = millis();
   }
 
-  if(buttonB.pressed()) {
+  if(buttonB.pressed()) { // display the Min/Max temps recorded
     displayMinMax();
     timer = millis() - updateTime + minMaxDisplayTime; //forces display update after minMaxDisplayTime
   }
@@ -358,5 +359,5 @@ void displayError(String error) {
   display.setCursor(5, 100);
   display.print(F("Button C pressed, continuing to proceed, ignoring error..."));
   display.display();
-  delay(5000);
+  delay(5000); // pause for reading time before proceeding
 }
