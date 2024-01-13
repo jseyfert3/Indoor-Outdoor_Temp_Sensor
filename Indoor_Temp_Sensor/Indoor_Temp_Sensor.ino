@@ -56,6 +56,7 @@ Jonathan Seyfert
 #define RFM69_RST     4  // RFM69 pins on M0 Feather
 #define LED           13 // RFM69 pins on M0 Feather - why does RFM69 use the LED?
 #define SDCS          16 // CS for RTC datalogging wing SD card
+#define SERIAL_DEBUG // Enables various serial debugging messages if defined
 
 RTC_PCF8523 rtc; // for RTC
 Button buttonA(11); // Button A on e-Ink display
@@ -85,9 +86,10 @@ Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
 ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY); // Instance for ThinkInk FeatherWing
 RH_RF69 rf69(RFM69_CS, RFM69_INT); // RFM69 Singleton instance
 
-void setup()
-{
+void setup() {
+  #ifdef SERIAL_DEBUG
   Serial.begin(115200);  // for testing
+  #endif
 
   buttonA.begin(); // Initialize the button library function buttons
   buttonB.begin();
@@ -117,7 +119,9 @@ void setup()
   delay(5000);  // Pause for 5 seconds to allow sensor time to initialize before displaying inital values
 
   if(!sht4.begin()) { // initialize SHT45 sensor
+    #ifdef SERIAL_DEBUG
     Serial.println(F("Unable to initialize SHT45!"));
+    #endif
     displayError(F("Unable to initialize SHT45!"));
   }
 
@@ -126,12 +130,16 @@ void setup()
  
   // see if the card is present and can be initialized:
   if (!SD.begin(SDCS)) {
+    #ifdef SERIAL_DEBUG
     Serial.println(F("Card init. failed!"));
+    #endif
     displayError(F("Unable to initialize SD card!"));
   }
 
   if(!rtc.begin()) { // initialize RTC
+    #ifdef SERIAL_DEBUG
     Serial.println(F("RTC init. failed!")); // print error over USB Serial port
+    #endif
     displayError(F("Unable to initialize RTC!")); // display error on screen
   }
 
@@ -154,57 +162,14 @@ void loop() {
     uint8_t len = sizeof(buf);
     if (rf69.recv(buf, &len))
     {
-      if (!len) return; //I think this is checking for buffer overflow? Part of example code
-      buf[len] = 0;
-      Serial.print("Received [");
-      Serial.print(len);
-      Serial.print("]: ");
-      String rxPacket = ((char*)buf); // rx format is dryBulb/WBGT/humdity/battery voltage as XX.X XX.X XX.X X.XX
-      // sscanf(rxPacket.c_str(), "%4s %4s %5s %4s", outDB, outWBGT, outRH, outVolt); // parse packet to values
-      Serial.println(rxPacket); 
-      Serial.print("RSSI: ");
-      Serial.println(rf69.lastRssi(), DEC);
+      if (!len) return; // checks to see if message length is 0. Unclear why that's needed, since rf69.available should not return true if there is no message?
+      buf[len] = 0; // what does this do?
+      String rxPacket = ((char*)buf); // transfer message into String variable
       outRxTime = rtc.now(); // Get time, so we can display time outside data was last received
-
-      String parseRxPacket = ""; // rx format is dryBulb/WBGT/humdity/battery voltage as XX.X XX.X XX.X X.XX
-      for (int i = 0; i <= 18; i++) {
-        if (rxPacket.charAt(i) != 32) { //check for space. ASCII decimal 32 is space
-          parseRxPacket.concat(rxPacket.charAt(i));
-        }
-        else {
-          switch (i) {
-            case 4: // location of first space
-              outDB = parseRxPacket.toFloat();
-              break;
-            case 9: // location of second space
-              outWBGT = parseRxPacket.toFloat();
-              break;
-            case 14: // location of third space
-              outRH = parseRxPacket.toFloat();
-              break;
-          }
-          parseRxPacket = ""; // wipe string
-        }
-        if (i == 18) {
-          outBat = parseRxPacket.toFloat();
-        }
-      }
-    if (outdoorMinMaxInitialized == false) { // see if we've ever done the initializing of outdoor Min/Max, if not, do so
-      outdoorMax = outDB;
-      outdoorMin = outDB;
-      outdoorMinMaxInitialized = true; // set flag so we never do it again.
-    }
-    if(outDB > outdoorMax) {
-      outdoorMax = outDB;
-    }
-    if(outDB < outdoorMin) {
-      outdoorMax = outDB;
-    }
-
-      Serial.println(outDB);
-      Serial.println(outWBGT);
-      Serial.println(outRH);
-      Serial.println(outBat);
+      parseRxPacket(rxPacket); // parses out received packet into individual float variables and checks/updates outdoor Min/Max temps
+      #ifdef SERIAL_DEBUG
+      Serial.println(rxPacket);
+      #endif
     }
   }
   
@@ -213,19 +178,19 @@ void loop() {
     sensors_event_t humidity, temp; // for SHT45
     sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
     float dryBulb = temp.temperature; // Get SHT45 temp
-    if(dryBulb > indoorMax) {
+    if(dryBulb > indoorMax) { // update indoor Max temp if current temp is higher
       indoorMax = dryBulb;
     }
-    if(dryBulb < indoorMin) {
+    if(dryBulb < indoorMin) { // update indoor Min temp if current temp is lower
       indoorMin = dryBulb;
     }
-    float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
-    updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32);
-    logTempData(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32);
-    timer = millis();
+    float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity); // calculate wet bulb temp
+    updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32); // update display with current readings
+    logTempData(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32); // log the data to SD card
+    timer = millis(); // reset timer so this function is called at appropriate timing
   }
 
-  if(buttonB.pressed()) { // display the Min/Max temps recorded
+  if(buttonB.pressed()) { // display the Min/Max temps recorded when Button B on the e-Ink FeatherWing is pressed!
     displayMinMax();
     timer = millis() - updateTime + minMaxDisplayTime; //forces display update after minMaxDisplayTime
   }
@@ -402,13 +367,19 @@ void logTempData(float DB, float RH, float WB) {
   if(logFile) {
     logFile.println(logString); // print to file
     logFile.close(); // close file to ensure it was written
+    #ifdef SERIAL_DEBUG
     Serial.println(F("Logged to datalog.txt!")); // for debug
+    #endif
   }
   else {
+    #ifdef SERIAL_DEBUG
     Serial.println(F("Unable to open datalog.txt!")); // for debug
+    #endif
     displayError(F("Unable to open datalog.txt!")); // display error
   }
+  #ifdef SERIAL_DEBUG
   Serial.println(logString); // for debug
+  #endif
 }
 
 void displayError(String error) {
@@ -440,4 +411,45 @@ float batteryVoltage() { // Measures and returns battery voltage
   volts *= 3.3;  // Multiply by 3.3V, our reference voltage
   volts /= 1024; // convert to voltage
   return volts;
+}
+
+/* Receives string as dryBulb/WBGT/humdity/battery voltage as XX.X XX.X XX.X X.XX, parses to global floats, checks for outdoor Min/Max
+    Requires global float variables outDB, outWBGT, outRH, outBat, outdoorMax, outdoorMin
+    Consider breaking out the Min/Max into it's own function? 
+*/
+void parseRxPacket(String rx) { 
+  String parseString = "";
+  for (int i = 0; i <= 18; i++) {
+    if (rx.charAt(i) != 32) { //check for space. ASCII decimal 32 is space
+      parseString.concat(rx.charAt(i));
+    }
+    else {
+      switch (i) {
+        case 4: // location of first space
+          outDB = parseString.toFloat();
+          break;
+        case 9: // location of second space
+          outWBGT = parseString.toFloat();
+          break;
+        case 14: // location of third space
+          outRH = parseString.toFloat();
+          break;
+      }
+      parseString = ""; // wipe string
+    }
+    if (i == 18) {
+      outBat = parseString.toFloat();
+    }
+  }
+  if (outdoorMinMaxInitialized == false) { // see if we've ever done the initializing of outdoor Min/Max, if not, do so
+    outdoorMax = outDB;
+    outdoorMin = outDB;
+    outdoorMinMaxInitialized = true; // set flag so we never do it again.
+  }
+  if(outDB > outdoorMax) {
+    outdoorMax = outDB;
+  }
+  if(outDB < outdoorMin) {
+    outdoorMin = outDB;
+  }
 }
