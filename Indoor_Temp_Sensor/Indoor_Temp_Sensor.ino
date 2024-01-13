@@ -66,7 +66,6 @@ const unsigned long updateTime = 180000;  // How often to update display
 unsigned long timer = 0;  // Used to check if it's time to update display
 const int radioSendTime = 15000;  // Send data via radio every 15 seconds
 float batteryVoltage = 0; // for measuring battery voltage
-String rxPacket;
 char outDB[5], outWBGT[5], outRH[6], outVolt[5]; // for parsing outdoor sensor values from Rx packet
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}; // for RTC
 DateTime bootTime; // To display time at boot, time for min/max
@@ -74,6 +73,10 @@ DateTime outRxTime; // To display time outdoor sensor last updated
 float indoorMax; // To record indoor max temp
 float indoorMin; // To record indoor min temp
 const unsigned long minMaxDisplayTime = 15000; // How long to display the Min/Max screen
+float outDBFloat;
+float outWBFloat;
+float outRHFloat;
+float outBatFloat;
 
 Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
 ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY); // Instance for ThinkInk FeatherWing
@@ -139,7 +142,7 @@ void setup()
   indoorMin = dryBulb; //set indoor min to current for new boot
   indoorMax = dryBulb; //set indoor max to current for new boot
   float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
-  updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, "Waiting...");
+  updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32);
 }
 
 void loop() {
@@ -153,11 +156,51 @@ void loop() {
       Serial.print("Received [");
       Serial.print(len);
       Serial.print("]: ");
-      rxPacket = ((char*)buf);
-      Serial.println(rxPacket); // rx format is dryBulb/wetBulb/humdity/battery voltage as XX.X XX.X XX.X X.XX
+      String rxPacket = ((char*)buf); // rx format is dryBulb/wetBulb/humdity/battery voltage as XX.X XX.X XX.X X.XX
+      sscanf(rxPacket.c_str(), "%4s %4s %5s %4s", outDB, outWBGT, outRH, outVolt); // parse packet to values
+      Serial.println(rxPacket); 
       Serial.print("RSSI: ");
       Serial.println(rf69.lastRssi(), DEC);
       outRxTime = rtc.now(); // Get time, so we can display time outside data was last received
+
+      String parseRxPacket = "";
+      for (int i = 0; i <= 18; i++) {
+        if (rxPacket.charAt(i) != 32) { //check for space. ASCII decimal 32 is space
+          parseRxPacket.concat(rxPacket.charAt(i));
+        }
+        else {
+          switch (i) {
+            case 4:
+              outDBFloat = parseRxPacket.toFloat();
+              break;
+            case 9:
+              outWBFloat = parseRxPacket.toFloat();
+              break;
+            case 14:
+              outRHFloat = parseRxPacket.toFloat();
+              break;
+          }
+          parseRxPacket = ""; // wipe string
+        }
+        if (i == 18) {
+          outBatFloat = parseRxPacket.toFloat();
+        }
+      }
+
+      Serial.println(outDBFloat);
+      Serial.println(outWBFloat);
+      Serial.println(outRHFloat);
+      Serial.println(outBatFloat);
+
+      //Below is testing converting char arrays to float WORKS, now to make something "better"
+      // Serial.print("outDB: ");
+      // Serial.println(outDB);
+      // String outDBString = String(outDB);
+      // Serial.print("outDBString: ");
+      // Serial.println(outDBString);
+      // float outDBFloat = outDBString.toFloat();
+      // Serial.print("outDBFloat: ");
+      // Serial.println(outDBFloat);
     }
   }
   
@@ -173,7 +216,7 @@ void loop() {
       indoorMin = dryBulb;
     }
     float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
-    updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32, rxPacket);
+    updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32);
     logTempData(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32);
     timer = millis();
   }
@@ -184,8 +227,7 @@ void loop() {
   }
 }
 
-void updateDisplay(float DB, float RH, float WB, String RX) {
-  sscanf(RX.c_str(), "%4s %4s %5s %4s", outDB, outWBGT, outRH, outVolt); // parse packet to values
+void updateDisplay(float DB, float RH, float WB) {
   batteryVoltage = analogRead(VBATPIN); // read battery voltage
   batteryVoltage *= 2;    // we divided by 2, so multiply back
   batteryVoltage *= 3.3;  // Multiply by 3.3V, our reference voltage
