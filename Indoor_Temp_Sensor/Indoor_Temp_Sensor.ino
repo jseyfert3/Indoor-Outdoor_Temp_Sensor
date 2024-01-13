@@ -261,12 +261,24 @@ void updateDisplay(float DB, float RH, float WB) {
   display.print(F("Last update:"));
   display.setCursor(5, 14);
   display.print("I-"); // indoor display update time
+  if (now.hour() < 10) {
+    display.print("0");
+  }
   display.print(now.hour(), DEC);
   display.print(":");
+  if (now.minute() < 10) {
+    display.print("0");
+  }
   display.print(now.minute(), DEC);
   display.print("  O-"); // outdoor display update time
+  if (outRxTime.hour() < 10) {
+    display.print("0");
+  }
   display.print(outRxTime.hour(), DEC);
   display.print(":");
+  if (outRxTime.minute() < 10) {
+    display.print("0");
+  }
   display.print(outRxTime.minute(), DEC);
 
   display.display();
@@ -321,10 +333,19 @@ void logTempData(float DB, float RH, float WB) {
   logString += "-";
   logString += logTime.day();
   logString += " ";
+  if (logTime.hour() < 10) { // add a leading zero to keep conventional time format
+    logString += "0";
+  }
   logString += logTime.hour();
   logString += ":";
+  if (logTime.minute() < 10) {
+    logString += "0";
+  }
   logString += logTime.minute();
   logString += ":";
+  if (logTime.second() < 10) {
+    logString += "0";
+  }
   logString += logTime.second();
   logString += ",";
   logString += DB;
