@@ -72,6 +72,9 @@ DateTime bootTime; // To display time at boot, time for min/max
 DateTime outRxTime; // To display time outdoor sensor last updated
 float indoorMax; // To record indoor max temp
 float indoorMin; // To record indoor min temp
+float outdoorMax; // to record outdoor max temp
+float outdoorMin; // to record outdoor min temp
+bool outdoorMinMaxInitialized = false;
 const unsigned long minMaxDisplayTime = 15000; // How long to display the Min/Max screen
 float outDB;
 float outWBGT;
@@ -186,6 +189,17 @@ void loop() {
           outBat = parseRxPacket.toFloat();
         }
       }
+    if (outdoorMinMaxInitialized == false) { // see if we've ever done the initializing of outdoor Min/Max, if not, do so
+      outdoorMax = outDB;
+      outdoorMin = outDB;
+      outdoorMinMaxInitialized = true; // set flag so we never do it again.
+    }
+    if(outDB > outdoorMax) {
+      outdoorMax = outDB;
+    }
+    if(outDB < outdoorMin) {
+      outdoorMax = outDB;
+    }
 
       Serial.println(outDB);
       Serial.println(outWBGT);
@@ -316,10 +330,16 @@ void displayMinMax() {
 
   display.setCursor(5, 45);
   display.setTextSize(2);
-  display.print(F("Indoor: "));
+  display.print(F("Indoor:  "));
   display.print(indoorMin*1.8 + 32);
   display.print(F("/"));
   display.print(indoorMax*1.8 + 32);
+
+  display.setCursor(5, 70);
+  display.print(F("Outdoor: "));
+  display.print(outdoorMin);
+  display.print(F("/"));
+  display.print(outdoorMax);
 
   display.display();
 }
