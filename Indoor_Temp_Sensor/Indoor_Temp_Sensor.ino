@@ -414,33 +414,46 @@ float batteryVoltage() { // Measures and returns battery voltage
 }
 
 /* Receives string as dryBulb/WBGT/humdity/battery voltage as XX.X XX.X XX.X X.XX, parses to global floats, checks for outdoor Min/Max
+    DOes not care about length of individual parts anymore, so long as they are space seperated
     Requires global float variables outDB, outWBGT, outRH, outBat, outdoorMax, outdoorMin
     Consider breaking out the Min/Max into it's own function? 
 */
 void parseRxPacket(String rx) { 
   String parseString = "";
-  for (int i = 0; i <= 18; i++) {
+  int spaceCounter = 0;
+  int length = rx.length(); // get string length
+  #ifdef SERIAL_DEBUG
+  Serial.println(length);
+  #endif
+  for (int i = 0; i < length; i++) {
     if (rx.charAt(i) != 32) { //check for space. ASCII decimal 32 is space
       parseString.concat(rx.charAt(i));
     }
     else {
-      switch (i) {
-        case 4: // location of first space
+      spaceCounter++;
+      switch (spaceCounter) {
+        case 1: // location of first space
           outDB = parseString.toFloat();
           break;
-        case 9: // location of second space
+        case 2: // location of second space
           outWBGT = parseString.toFloat();
           break;
-        case 14: // location of third space
+        case 3: // location of third space
           outRH = parseString.toFloat();
           break;
       }
       parseString = ""; // wipe string
     }
-    if (i == 18) {
+    if (i == length - 1) { // check if this was the last for() loop iteration
       outBat = parseString.toFloat();
     }
   }
+  #ifdef SERIAL_DEBUG
+  Serial.print(outDB);
+  Serial.print(outWBGT);
+  Serial.print(outRH);
+  Serial.println(outBat);
+  #endif
   if (outdoorMinMaxInitialized == false) { // see if we've ever done the initializing of outdoor Min/Max, if not, do so
     outdoorMax = outDB;
     outdoorMin = outDB;
