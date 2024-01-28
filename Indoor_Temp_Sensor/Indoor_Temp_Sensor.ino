@@ -22,9 +22,10 @@ Current status is a stable build.
     - Format is inside time, inside temp, inside RH, inside WBGT, outside time, outside temp, outside RH, outside WBGT, RSSI
   Added error message screen
   Added homemade message parser and conversion to floats
+  2024-01-27: Added unit ID, display of keg temp if button C is pressed
 
 Jonathan Seyfert
-2024-01-13
+2024-01-27
 */
 
 #include "Adafruit_ThinkInk.h" // for e-ink display
@@ -71,6 +72,7 @@ const int radioSendTime = 15000;  // Send data via radio every 15 seconds
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}; // for RTC
 DateTime bootTime; // To display time at boot, time for min/max
 DateTime outRxTime; // To display time outdoor sensor last updated
+DateTime kegRxTime; // To display time keg sensor last updated
 float indoorMax; // To record indoor max temp
 float indoorMin; // To record indoor min temp
 float outdoorMax; // to record outdoor max temp
@@ -81,6 +83,10 @@ float outDB;
 float outWBGT;
 float outRH;
 float outBat;
+float kegDB;
+float kegWBGT;
+float kegRH;
+float kegBat;
 
 Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
 ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY); // Instance for ThinkInk FeatherWing
@@ -165,8 +171,14 @@ void loop() {
       if (!len) return; // checks to see if message length is 0. Unclear why that's needed, since rf69.available should not return true if there is no message?
       buf[len] = 0; // what does this do?
       String rxPacket = ((char*)buf); // transfer message into String variable
-      outRxTime = rtc.now(); // Get time, so we can display time outside data was last received
-      parseRxPacket(rxPacket); // parses out received packet into individual float variables and checks/updates outdoor Min/Max temps
+      int id = parseRxPacket(rxPacket); // parses out received packet into individual float variables and checks/updates outdoor Min/Max temps
+      if (id == 1) {
+        outRxTime = rtc.now(); // Get time, so we can display time outside data was last received
+      }
+      else if (id == 2) {
+        kegRxTime = rtc.now();
+      }
+
       #ifdef SERIAL_DEBUG
       Serial.println(rxPacket);
       #endif
@@ -192,6 +204,11 @@ void loop() {
 
   if(buttonB.pressed()) { // display the Min/Max temps recorded when Button B on the e-Ink FeatherWing is pressed!
     displayMinMax();
+    timer = millis() - updateTime + minMaxDisplayTime; //forces display update after minMaxDisplayTime
+  }
+
+  if(buttonC.pressed()) { // display the Min/Max temps recorded when Button B on the e-Ink FeatherWing is pressed!
+    displayKegData();
     timer = millis() - updateTime + minMaxDisplayTime; //forces display update after minMaxDisplayTime
   }
 }
@@ -259,6 +276,65 @@ void updateDisplay(float DB, float RH, float WB) {
     display.print("0");
   }
   display.print(outRxTime.minute(), DEC);
+
+  display.display();
+}
+
+void displayKegData() {
+  display.clearBuffer();
+  display.setTextSize(2);
+  display.setTextColor(EPD_DARK);
+  display.setCursor(5, 5);
+  display.print(F("          Keg"));
+  
+  display.setCursor(5, 30);
+  display.print(F("Temp (F)  "));
+  display.print(kegDB, 1);
+
+  display.setCursor(5, 55);
+  display.print(F("RH   (%)  "));
+  display.print(kegRH, 1);
+
+  display.setCursor(5, 80);
+  display.setTextColor(EPD_BLACK);
+  display.print(F("WBGT (F)  "));
+  display.print(kegWBGT, 1);
+
+  display.setCursor(5, 105);
+  display.setTextColor(EPD_DARK);
+  display.print(F("Bat  (V)  "));
+  display.print(kegBat, 2);
+
+  display.drawFastVLine(195, 0, 128, EPD_BLACK);
+  display.drawFastVLine(105, 0, 128, EPD_BLACK);
+  display.drawFastHLine(0, 25, 296, EPD_BLACK);
+
+  DateTime now = rtc.now(); // Get the current time to update the display with
+  display.setTextSize(1);
+  display.setTextColor(EPD_BLACK);
+  display.setCursor(5, 4);
+  display.print(F("Last update:"));
+  display.setCursor(5, 14);
+  display.print("I-"); // indoor display update time
+  if (now.hour() < 10) {
+    display.print("0");
+  }
+  display.print(now.hour(), DEC);
+  display.print(":");
+  if (now.minute() < 10) {
+    display.print("0");
+  }
+  display.print(now.minute(), DEC);
+  display.print("  O-"); // outdoor display update time
+  if (outRxTime.hour() < 10) {
+    display.print("0");
+  }
+  display.print(kegRxTime.hour(), DEC);
+  display.print(":");
+  if (outRxTime.minute() < 10) {
+    display.print("0");
+  }
+  display.print(kegRxTime.minute(), DEC);
 
   display.display();
 }
@@ -347,10 +423,19 @@ void logTempData(float DB, float RH, float WB) {
   logString += "-";
   logString += outRxTime.day();
   logString += " ";
+  if (outRxTime.hour() < 10) { // add a leading zero to keep conventional time format
+    logString += "0";
+  }
   logString += outRxTime.hour();
   logString += ":";
+  if (outRxTime.minute() < 10) { // add a leading zero to keep conventional time format
+    logString += "0";
+  }
   logString += outRxTime.minute();
   logString += ":";
+  if (outRxTime.second() < 10) { // add a leading zero to keep conventional time format
+    logString += "0";
+  }
   logString += outRxTime.second();
   logString += ",";
   logString += outDB;
@@ -360,6 +445,35 @@ void logTempData(float DB, float RH, float WB) {
   logString += outWBGT;
   logString += ",";
   logString += outBat; // log battery voltage
+  logString += ",";
+  logString += kegRxTime.year();
+  logString += "-";
+  logString += kegRxTime.month();
+  logString += "-";
+  logString += kegRxTime.day();
+  logString += " ";
+  if (kegRxTime.hour() < 10) { // add a leading zero to keep conventional time format
+    logString += "0";
+  }
+  logString += kegRxTime.hour();
+  logString += ":";
+  if (kegRxTime.minute() < 10) { // add a leading zero to keep conventional time format
+    logString += "0";
+  }
+  logString += kegRxTime.minute();
+  logString += ":";
+  if (kegRxTime.second() < 10) { // add a leading zero to keep conventional time format
+    logString += "0";
+  }
+  logString += kegRxTime.second();
+  logString += ",";
+  logString += kegDB;
+  logString += ",";
+  logString += kegRH;
+  logString += ",";
+  logString += kegWBGT;
+  logString += ",";
+  logString += kegBat; // log battery voltage
   logString += ",";
   logString += rf69.lastRssi();
 
@@ -413,15 +527,16 @@ float batteryVoltage() { // Measures and returns battery voltage
   return volts;
 }
 
-/* Receives string as dryBulb/WBGT/humdity/battery voltage as XX.X XX.X XX.X X.XX, parses to global floats, checks for outdoor Min/Max
+/* Receives string as unitID/dryBulb/WBGT/humdity/battery voltage as X XX.X XX.X XX.X X.XX, parses to global floats, checks for outdoor Min/Max
     DOes not care about length of individual parts anymore, so long as they are space seperated
     Requires global float variables outDB, outWBGT, outRH, outBat, outdoorMax, outdoorMin
     Consider breaking out the Min/Max into it's own function? 
 */
-void parseRxPacket(String rx) { 
+int parseRxPacket(String rx) { 
   String parseString = "";
   int spaceCounter = 0;
   int length = rx.length(); // get string length
+  int unitID = 0;
   #ifdef SERIAL_DEBUG
   Serial.println(length);
   #endif
@@ -432,37 +547,59 @@ void parseRxPacket(String rx) {
     else {
       spaceCounter++;
       switch (spaceCounter) {
-        case 1: // location of first space
-          outDB = parseString.toFloat();
+        case 1: // location of space x
+          unitID = parseString.toInt();
           break;
-        case 2: // location of second space
-          outWBGT = parseString.toFloat();
+        case 2: // location of space x
+          if (unitID == 1) {
+            outDB = parseString.toFloat();
+          }
+          else if (unitID == 2) {
+            kegDB = parseString.toFloat();
+          }
           break;
-        case 3: // location of third space
-          outRH = parseString.toFloat();
+        case 3: // location of space x
+          if (unitID == 1) {
+            outWBGT = parseString.toFloat();
+          }
+          else if (unitID == 2) {
+            kegWBGT = parseString.toFloat();
+          }
+          break;
+        case 4: // location of space x
+          if (unitID == 1) {
+            outRH = parseString.toFloat();
+          }
+          else if (unitID == 2) {
+            kegRH = parseString.toFloat();
+          }
           break;
       }
       parseString = ""; // wipe string
     }
     if (i == length - 1) { // check if this was the last for() loop iteration
-      outBat = parseString.toFloat();
+      if (unitID == 1) {
+        outBat = parseString.toFloat();
+      }
+      else if (unitID == 2) {
+        kegBat = parseString.toFloat();
+      }
     }
   }
-  #ifdef SERIAL_DEBUG
-  Serial.print(outDB);
-  Serial.print(outWBGT);
-  Serial.print(outRH);
-  Serial.println(outBat);
-  #endif
-  if (outdoorMinMaxInitialized == false) { // see if we've ever done the initializing of outdoor Min/Max, if not, do so
-    outdoorMax = outDB;
-    outdoorMin = outDB;
-    outdoorMinMaxInitialized = true; // set flag so we never do it again.
+
+  if (unitID == 1) { // only do this if we're talking about the outdoor unit
+    if (outdoorMinMaxInitialized == false) { // see if we've ever done the initializing of outdoor Min/Max, if not, do so
+      outdoorMax = outDB;
+      outdoorMin = outDB;
+      outdoorMinMaxInitialized = true; // set flag so we never do it again.
+    }
+    if(outDB > outdoorMax) {
+      outdoorMax = outDB;
+    }
+    if(outDB < outdoorMin) {
+      outdoorMin = outDB;
+    }
   }
-  if(outDB > outdoorMax) {
-    outdoorMax = outDB;
-  }
-  if(outDB < outdoorMin) {
-    outdoorMin = outDB;
-  }
+  
+  return unitID;
 }

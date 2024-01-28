@@ -4,8 +4,10 @@ Indoor unit has ThinkInk e-ink display & RTC with SD card logging & SHT45 RH/tem
 Outdoor unit has RHT45 sensor and goes to sleep to save battery.
 Both units are built on a M0 powered Feather with RFM69 915 MHz radio (license free).
 
+2024-01-27: Added Unit ID to transmission for multiple remote units
+
 Jonathan Seyfert
-2024-01-06
+2024-01-27
  
 Cut e-ink ECS pin, soldered wire to move it to pin A1 on feather (GPIO 15 on M0 Feather)
 Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Feather)
@@ -30,6 +32,9 @@ RH_RF69 rf69(RFM69_CS, RFM69_INT); // Singleton instance of the radio driver
 float x = 0.0; // for custom dtostrf()
 float y = 0.0; // for custom dtostrf()
 float batteryVoltage = 0; // for measuring battery voltage
+char unitID[2] = {'2'}; // for applications with multiple sensors, set this to desired unit ID before compiling
+// Unit 1 is outdoor. Unit 2 is kegerator.
+// SHOULD ADD: Some dip switches that allow setting unitID instead of needing it to be compiled into code
 
 void setup() {
   Serial.begin(115200);
@@ -69,8 +74,11 @@ void loop() {
   float dryBulb = temp.temperature; // Get SHT45 temp
   float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
   
-  // Send dryBulb/WBGT/humdity/battery voltage as XX.X XX.X XX.X X.XX
+  // Send dryBulb/WBGT/humdity/battery voltage as X XX.X XX.X XX.X X.XX
   char radioPacket[30] = {'\0'};
+  strcat(radioPacket, unitID); // add desired unit id to device
+  strcat(radioPacket, " ");
+
   String tempDBPacketString = String(dryBulb*1.8 + 32, 1); // convert temp to char string
   char tempDBPacketChar[6] = {'\0'};
   tempDBPacketString.toCharArray(tempDBPacketChar, 6);
