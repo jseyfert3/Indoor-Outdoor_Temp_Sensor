@@ -23,9 +23,10 @@ Current status is a stable build.
   Added error message screen
   Added homemade message parser and conversion to floats
   2024-01-27: Added unit ID, display of keg temp if button C is pressed
+  2024-02-18: Added parsing for unit 3, a AQI sensor. Really need to get the Raspberry Pi going...
 
 Jonathan Seyfert
-2024-01-27
+2024-02-18
 */
 
 #include "Adafruit_ThinkInk.h" // for e-ink display
@@ -68,11 +69,14 @@ extern "C" char *sbrk(int i);  // for FreeMem()
 const unsigned long updateTime = 180000;  // How often to update display
 unsigned long timer = 0;  // Used to check if it's time to update display
 const int radioSendTime = 15000;  // Send data via radio every 15 seconds
+unsigned long logTimer = 0;
+const int logTime = 60000;
 //char outDB[5], outWBGT[5], outRH[6], outVolt[5]; // for parsing outdoor sensor values from Rx packet
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}; // for RTC
 DateTime bootTime; // To display time at boot, time for min/max
 DateTime outRxTime; // To display time outdoor sensor last updated
 DateTime kegRxTime; // To display time keg sensor last updated
+DateTime aqiRxTime; // To record time aqi sensor last updated
 float indoorMax; // To record indoor max temp
 float indoorMin; // To record indoor min temp
 float outdoorMax; // to record outdoor max temp
@@ -87,6 +91,18 @@ float kegDB;
 float kegWBGT;
 float kegRH;
 float kegBat;
+float aqiDB;
+float aqiRH;
+float aqiBat;
+unsigned int aqi03um; // 0.3 um
+unsigned int aqi05um;
+unsigned int aqi10um;
+unsigned int aqi25um;
+unsigned int aqi50um;
+unsigned int aqi100um; // 10 um
+int outRSSI; // for RSSI of last out Rx
+int kegRSSI;
+int aqiRSSI;
 
 Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
 ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY); // Instance for ThinkInk FeatherWing
@@ -174,9 +190,15 @@ void loop() {
       int id = parseRxPacket(rxPacket); // parses out received packet into individual float variables and checks/updates outdoor Min/Max temps
       if (id == 1) {
         outRxTime = rtc.now(); // Get time, so we can display time outside data was last received
+        outRSSI = rf69.lastRssi();
       }
       else if (id == 2) {
         kegRxTime = rtc.now();
+        kegRSSI = rf69.lastRssi();
+      }
+      else if (id == 3) {
+        aqiRxTime = rtc.now();
+        aqiRSSI = rf69.lastRssi();
       }
 
       #ifdef SERIAL_DEBUG
@@ -198,8 +220,16 @@ void loop() {
     }
     float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity); // calculate wet bulb temp
     updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32); // update display with current readings
-    logTempData(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32); // log the data to SD card
     timer = millis(); // reset timer so this function is called at appropriate timing
+  }
+
+  if(millis() - logTimer >= logTime) { // log data every "logTime" ms interval
+    sensors_event_t humidity, temp; // for SHT45
+    sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
+    float dryBulb = temp.temperature; // Get SHT45 temp
+    float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity); // calculate wet bulb temp
+    logTempData(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32); // log the data to SD card
+    logTimer = millis(); // reset timer so this function is called at appropriate timing
   }
 
   if(buttonB.pressed()) { // display the Min/Max temps recorded when Button B on the e-Ink FeatherWing is pressed!
@@ -446,6 +476,8 @@ void logTempData(float DB, float RH, float WB) {
   logString += ",";
   logString += outBat; // log battery voltage
   logString += ",";
+  logString += outRSSI;
+  logString += ",";
   logString += kegRxTime.year();
   logString += "-";
   logString += kegRxTime.month();
@@ -475,7 +507,48 @@ void logTempData(float DB, float RH, float WB) {
   logString += ",";
   logString += kegBat; // log battery voltage
   logString += ",";
-  logString += rf69.lastRssi();
+  logString += kegRSSI;
+  logString += ",";
+  logString += aqiRxTime.year();
+  logString += "-";
+  logString += aqiRxTime.month();
+  logString += "-";
+  logString += aqiRxTime.day();
+  logString += " ";
+  if (aqiRxTime.hour() < 10) { // add a leading zero to keep conventional time format
+    logString += "0";
+  }
+  logString += aqiRxTime.hour();
+  logString += ":";
+  if (aqiRxTime.minute() < 10) { // add a leading zero to keep conventional time format
+    logString += "0";
+  }
+  logString += aqiRxTime.minute();
+  logString += ":";
+  if (aqiRxTime.second() < 10) { // add a leading zero to keep conventional time format
+    logString += "0";
+  }
+  logString += aqiRxTime.second();
+  logString += ",";
+  logString += aqiDB;
+  logString += ",";
+  logString += aqiRH;
+  logString += ",";
+  logString += aqiBat; // log battery voltage
+  logString += ",";
+  logString += aqi03um;
+  logString += ",";
+  logString += aqi05um;
+  logString += ",";
+  logString += aqi10um;
+  logString += ",";
+  logString += aqi25um;
+  logString += ",";
+  logString += aqi50um;
+  logString += ",";
+  logString += aqi100um;
+  logString += ",";
+  logString += aqiRSSI;
 
   File logFile = SD.open("datalog", FILE_WRITE); // Open file for logging crash as writable file
   if(logFile) {
@@ -557,6 +630,9 @@ int parseRxPacket(String rx) {
           else if (unitID == 2) {
             kegDB = parseString.toFloat();
           }
+          else if (unitID == 3) {
+            aqiDB = parseString.toFloat();
+          }
           break;
         case 3: // location of space x
           if (unitID == 1) {
@@ -565,6 +641,9 @@ int parseRxPacket(String rx) {
           else if (unitID == 2) {
             kegWBGT = parseString.toFloat();
           }
+          else if (unitID == 3) {
+            aqiRH = parseString.toFloat();
+          }
           break;
         case 4: // location of space x
           if (unitID == 1) {
@@ -572,6 +651,34 @@ int parseRxPacket(String rx) {
           }
           else if (unitID == 2) {
             kegRH = parseString.toFloat();
+          }
+          else if (unitID == 3) {
+            aqiBat = parseString.toFloat();
+          }
+          break;
+        case 5: 
+          if (unitID == 3) {
+            aqi03um = parseString.toInt();
+          }
+          break;
+        case 6: 
+          if (unitID == 3) {
+            aqi05um = parseString.toDouble();
+          }
+          break;
+        case 7: 
+          if (unitID == 3) {
+            aqi10um = parseString.toDouble();
+          }
+          break;
+        case 8: 
+          if (unitID == 3) {
+            aqi25um = parseString.toDouble();
+          }
+          break;
+        case 9: 
+          if (unitID == 3) {
+            aqi50um = parseString.toDouble();
           }
           break;
       }
@@ -583,6 +690,9 @@ int parseRxPacket(String rx) {
       }
       else if (unitID == 2) {
         kegBat = parseString.toFloat();
+      }
+      else if (unitID == 3) {
+        aqi100um = parseString.toDouble();
       }
     }
   }
