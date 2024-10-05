@@ -29,9 +29,11 @@ Jonathan Seyfert
 2024-02-18
 */
 
-#include "Adafruit_ThinkInk.h" // for e-ink display
+//#include "Adafruit_ThinkInk.h" // for e-ink display
+#include <Adafruit_GFX.h>    // Core graphics library
+#include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
 #include "Adafruit_SHT4x.h" // for SHT45 temp/humidity sensor
-#include <SPI.h>  // For RFM69 & e-ink & SD card
+#include <SPI.h>  // For RFM69 & LCD & SD card
 #include <RH_RF69.h>  // For RFM69
 #include <SD.h> // For SD card logging
 #include "RTClib.h" // For RTC
@@ -39,11 +41,14 @@ Jonathan Seyfert
 
 // The following is for the e-ink display
 // Note that the e-Ink Wing has an SD card CS on pin 5, do not use on accident!
-#define EPD_DC      10 // can be any pin, but required!
-#define EPD_CS      15  // pin 15 is A1 (19 on 32U4!)
-#define EPD_BUSY    -1  // can set to -1 to not use a pin (will wait a fixed delay) <- Available but not connected
-#define SRAM_CS     6  // can set to -1 to not use a pin (uses a lot of RAM!)
-#define EPD_RESET   -1  // can set to -1 and share with chip Reset (can't deep sleep)
+// #define EPD_DC      10 // can be any pin, but required!
+// #define EPD_CS      15  // pin 15 is A1 (19 on 32U4!)
+// #define EPD_BUSY    -1  // can set to -1 to not use a pin (will wait a fixed delay) <- Available but not connected
+// #define SRAM_CS     6  // can set to -1 to not use a pin (uses a lot of RAM!)
+// #define EPD_RESET   -1  // can set to -1 and share with chip Reset (can't deep sleep)
+#define TFT_CS        11
+#define TFT_RST       12
+#define TFT_DC        13
 // #define BTN_A       11  // Button A on e-Ink
 // #define BTN_B       12  // Button B on e-Ink
 // #define BTN_C       13  // Button C on e-Ink
@@ -105,7 +110,8 @@ int kegRSSI;
 int aqiRSSI;
 
 Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
-ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY); // Instance for ThinkInk FeatherWing
+//ThinkInk_290_Grayscale4_T5 display(EPD_DC, EPD_RESET, EPD_CS, SRAM_CS, EPD_BUSY); // Instance for ThinkInk FeatherWing
+Adafruit_ST7789 display = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST); // for LCD
 RH_RF69 rf69(RFM69_CS, RFM69_INT); // RFM69 Singleton instance
 
 void setup() {
@@ -137,7 +143,10 @@ void setup() {
   rf69.setEncryptionKey(key);  // Set RFM69 encryption
   SPI.usingInterrupt(digitalPinToInterrupt(RFM69_INT)); // Apparently the RadioHead library doesn't register it does SPI within an interrupt, so this is required to avoid conflicts
   
-  display.begin(THINKINK_GRAYSCALE4);  // Initialize e-Ink display
+//  display.begin(THINKINK_GRAYSCALE4);  // Initialize e-Ink display
+  display.init(170, 320);           // Init ST7789 170x320 LCD
+  display.setRotation(1); // 0 & 2 should be portrait, 1 & 3 landscape
+  display.fillScreen(ST77XX_WHITE);
   delay(5000);  // Pause for 5 seconds to allow sensor time to initialize before displaying inital values
 
   if(!sht4.begin()) { // initialize SHT45 sensor
@@ -244,9 +253,10 @@ void loop() {
 }
 
 void updateDisplay(float DB, float RH, float WB) {
-  display.clearBuffer();
+//  display.clearBuffer();
+  display.fillScreen(ST77XX_WHITE);
   display.setTextSize(2);
-  display.setTextColor(EPD_DARK);
+  display.setTextColor(ST77XX_BLACK);
   display.setCursor(5, 5);
   display.print(F("         Indoor  Outdoor"));
   
@@ -263,26 +273,26 @@ void updateDisplay(float DB, float RH, float WB) {
   display.print(outRH, 1);
 
   display.setCursor(5, 80);
-  display.setTextColor(EPD_BLACK);
+  display.setTextColor(ST77XX_BLACK);
   display.print(F("WBGT (F)  "));
   display.print(0.7*WB + 0.3*DB, 1);
   display.print(F("    "));
   display.print(outWBGT, 1);
 
   display.setCursor(5, 105);
-  display.setTextColor(EPD_DARK);
+  display.setTextColor(ST77XX_BLACK);
   display.print(F("Bat  (V)  "));
   display.print(batteryVoltage(), 2);  
   display.print(F("    "));
   display.print(outBat, 2);
 
-  display.drawFastVLine(195, 0, 128, EPD_BLACK);
-  display.drawFastVLine(105, 0, 128, EPD_BLACK);
-  display.drawFastHLine(0, 25, 296, EPD_BLACK);
+  display.drawFastVLine(195, 0, 128, ST77XX_BLACK);
+  display.drawFastVLine(105, 0, 128, ST77XX_BLACK);
+  display.drawFastHLine(0, 25, 296, ST77XX_BLACK);
 
   DateTime now = rtc.now(); // Get the current time to update the display with
   display.setTextSize(1);
-  display.setTextColor(EPD_BLACK);
+  display.setTextColor(ST77XX_BLACK);
   display.setCursor(5, 4);
   display.print(F("Last update:"));
   display.setCursor(5, 14);
@@ -307,13 +317,14 @@ void updateDisplay(float DB, float RH, float WB) {
   }
   display.print(outRxTime.minute(), DEC);
 
-  display.display();
+//  display.display();
 }
 
 void displayKegData() {
-  display.clearBuffer();
+//  display.clearBuffer();
+  display.fillScreen(ST77XX_WHITE);
   display.setTextSize(2);
-  display.setTextColor(EPD_DARK);
+  display.setTextColor(ST77XX_BLACK);
   display.setCursor(5, 5);
   display.print(F("          Keg"));
   
@@ -326,22 +337,22 @@ void displayKegData() {
   display.print(kegRH, 1);
 
   display.setCursor(5, 80);
-  display.setTextColor(EPD_BLACK);
+  display.setTextColor(ST77XX_BLACK);
   display.print(F("WBGT (F)  "));
   display.print(kegWBGT, 1);
 
   display.setCursor(5, 105);
-  display.setTextColor(EPD_DARK);
+  display.setTextColor(ST77XX_BLACK);
   display.print(F("Bat  (V)  "));
   display.print(kegBat, 2);
 
-  display.drawFastVLine(195, 0, 128, EPD_BLACK);
-  display.drawFastVLine(105, 0, 128, EPD_BLACK);
-  display.drawFastHLine(0, 25, 296, EPD_BLACK);
+  display.drawFastVLine(195, 0, 128, ST77XX_BLACK);
+  display.drawFastVLine(105, 0, 128, ST77XX_BLACK);
+  display.drawFastHLine(0, 25, 296, ST77XX_BLACK);
 
   DateTime now = rtc.now(); // Get the current time to update the display with
   display.setTextSize(1);
-  display.setTextColor(EPD_BLACK);
+  display.setTextColor(ST77XX_BLACK);
   display.setCursor(5, 4);
   display.print(F("Last update:"));
   display.setCursor(5, 14);
@@ -366,7 +377,7 @@ void displayKegData() {
   }
   display.print(kegRxTime.minute(), DEC);
 
-  display.display();
+//  display.display();
 }
 
 float wetBulbCalc(float DB, float RH){
@@ -380,11 +391,11 @@ int FreeMem () {  //http://forum.arduino.cc/index.php?topic=365830.msg2542879#ms
 }
 
 void displayMinMax() {
-  display.clearBuffer();
-
+//  display.clearBuffer();
+  display.fillScreen(ST77XX_WHITE);
   display.setCursor(5, 5);
   display.setTextSize(2);
-  display.setTextColor(EPD_BLACK);
+  display.setTextColor(ST77XX_BLACK);
   display.print(F("MIN/MAX"));
   display.setCursor(5, 30);
   display.setTextSize(1);
@@ -412,7 +423,7 @@ void displayMinMax() {
   display.print(F("/"));
   display.print(outdoorMax);
 
-  display.display();
+//  display.display();
 }
 
 void logTempData(float DB, float RH, float WB) {
@@ -570,10 +581,11 @@ void logTempData(float DB, float RH, float WB) {
 }
 
 void displayError(String error) {
-  display.clearBuffer();
+//  display.clearBuffer();
+  display.fillScreen(ST77XX_WHITE);
   display.setCursor(5, 5);
   display.setTextSize(2);
-  display.setTextColor(EPD_BLACK);
+  display.setTextColor(ST77XX_BLACK);
   display.print(F("ERROR! "));
   display.print(error);
   display.setCursor(5, 55);
@@ -581,14 +593,14 @@ void displayError(String error) {
   display.print(F("Press button C to continue and ignore error."));
   display.setCursor(5, 70);
   display.print(F("The item that errored will likely not work until fixed."));
-  delay(500); // for some reason, without a delay here, calling display() would hang the micro/crash it
-  display.display();
+//  delay(500); // for some reason, without a delay here, calling display() would hang the micro/crash it
+//  display.display();
 
-  while(!buttonC.pressed()) // stop on this screen until button C is pressed
+  // while(!buttonC.pressed()) // stop on this screen until button C is pressed
 
-  display.setCursor(5, 100);
-  display.print(F("Button C pressed, continuing to proceed, ignoring error..."));
-  display.display();
+  // display.setCursor(5, 100);
+  // display.print(F("Button C pressed, continuing to proceed, ignoring error..."));
+//  display.display();
   delay(5000); // pause for reading time before proceeding
 }
 
