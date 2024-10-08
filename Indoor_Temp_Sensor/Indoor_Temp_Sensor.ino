@@ -49,9 +49,6 @@ Jonathan Seyfert
 #define TFT_CS        11
 #define TFT_RST       12
 #define TFT_DC        13
-// #define BTN_A       11  // Button A on e-Ink
-// #define BTN_B       12  // Button B on e-Ink
-// #define BTN_C       13  // Button C on e-Ink
 #define VBATPIN A7 // Internal battery voltage divider measurement pin
 #define RTC_SD_CS 16 // RTC wing SD chip select pin
 #define COLOR1 EPD_BLACK  // for ThinkInk Display
@@ -63,15 +60,17 @@ Jonathan Seyfert
 #define RFM69_RST     4  // RFM69 pins on M0 Feather
 #define LED           13 // RFM69 pins on M0 Feather - why does RFM69 use the LED?
 #define SDCS          16 // CS for RTC datalogging wing SD card
+// THE ABOVE IS DUPLICATED AND DEFINED AS RTC_SD_CS as well. Why?
 #define SERIAL_DEBUG // Enables various serial debugging messages if defined
 
 RTC_PCF8523 rtc; // for RTC
-Button buttonA(11); // Button A on e-Ink display
-Button buttonB(12); // Button B on e-Ink display
-Button buttonC(13); // Button C on e-Ink display
+//Button buttonA(11); // Button A on e-Ink display I wonder if leaving these caused LCD issues...
+//Button buttonB(12); // Button B on e-Ink display
+//Button buttonC(13); // Button C on e-Ink display
+Button buttonC(6); // labled C for legacy reasons, as e-ink was buttons A-C, need to rename now that not using e-ink
 
 extern "C" char *sbrk(int i);  // for FreeMem()
-const unsigned long updateTime = 180000;  // How often to update display
+const unsigned long updateTime = 5000;  // How often to update display
 unsigned long timer = 0;  // Used to check if it's time to update display
 const int radioSendTime = 15000;  // Send data via radio every 15 seconds
 unsigned long logTimer = 0;
@@ -119,8 +118,8 @@ void setup() {
   Serial.begin(115200);  // for testing
   #endif
 
-  buttonA.begin(); // Initialize the button library function buttons
-  buttonB.begin();
+//  buttonA.begin(); // Initialize the button library function buttons
+//  buttonB.begin();
   buttonC.begin();
 
   // pinMode(8, OUTPUT);  // When not using RFM, need to keep pin 8 high when sharing SPI bus
@@ -201,13 +200,9 @@ void loop() {
         outRxTime = rtc.now(); // Get time, so we can display time outside data was last received
         outRSSI = rf69.lastRssi();
       }
-      else if (id == 2) {
+      else if (id == 2) { // kegerator sensor
         kegRxTime = rtc.now();
         kegRSSI = rf69.lastRssi();
-      }
-      else if (id == 3) {
-        aqiRxTime = rtc.now();
-        aqiRSSI = rf69.lastRssi();
       }
 
       #ifdef SERIAL_DEBUG
@@ -241,10 +236,10 @@ void loop() {
     logTimer = millis(); // reset timer so this function is called at appropriate timing
   }
 
-  if(buttonB.pressed()) { // display the Min/Max temps recorded when Button B on the e-Ink FeatherWing is pressed!
-    displayMinMax();
-    timer = millis() - updateTime + minMaxDisplayTime; //forces display update after minMaxDisplayTime
-  }
+  // if(buttonB.pressed()) { // display the Min/Max temps recorded when Button B on the e-Ink FeatherWing is pressed!
+  //   displayMinMax();
+  //   timer = millis() - updateTime + minMaxDisplayTime; //forces display update after minMaxDisplayTime
+  // }
 
   if(buttonC.pressed()) { // display the Min/Max temps recorded when Button B on the e-Ink FeatherWing is pressed!
     displayKegData();
@@ -377,7 +372,7 @@ void displayKegData() {
   }
   display.print(kegRxTime.minute(), DEC);
 
-//  display.display();
+  delay(5000);
 }
 
 float wetBulbCalc(float DB, float RH){
@@ -519,47 +514,6 @@ void logTempData(float DB, float RH, float WB) {
   logString += kegBat; // log battery voltage
   logString += ",";
   logString += kegRSSI;
-  logString += ",";
-  logString += aqiRxTime.year();
-  logString += "-";
-  logString += aqiRxTime.month();
-  logString += "-";
-  logString += aqiRxTime.day();
-  logString += " ";
-  if (aqiRxTime.hour() < 10) { // add a leading zero to keep conventional time format
-    logString += "0";
-  }
-  logString += aqiRxTime.hour();
-  logString += ":";
-  if (aqiRxTime.minute() < 10) { // add a leading zero to keep conventional time format
-    logString += "0";
-  }
-  logString += aqiRxTime.minute();
-  logString += ":";
-  if (aqiRxTime.second() < 10) { // add a leading zero to keep conventional time format
-    logString += "0";
-  }
-  logString += aqiRxTime.second();
-  logString += ",";
-  logString += aqiDB;
-  logString += ",";
-  logString += aqiRH;
-  logString += ",";
-  logString += aqiBat; // log battery voltage
-  logString += ",";
-  logString += aqi03um;
-  logString += ",";
-  logString += aqi05um;
-  logString += ",";
-  logString += aqi10um;
-  logString += ",";
-  logString += aqi25um;
-  logString += ",";
-  logString += aqi50um;
-  logString += ",";
-  logString += aqi100um;
-  logString += ",";
-  logString += aqiRSSI;
 
   File logFile = SD.open("datalog", FILE_WRITE); // Open file for logging crash as writable file
   if(logFile) {
@@ -573,7 +527,7 @@ void logTempData(float DB, float RH, float WB) {
     #ifdef SERIAL_DEBUG
     Serial.println(F("Unable to open datalog.txt!")); // for debug
     #endif
-    displayError(F("Unable to open datalog.txt!")); // display error
+    //displayError(F("Unable to open datalog.txt!")); // display error
   }
   #ifdef SERIAL_DEBUG
   Serial.println(logString); // for debug
@@ -593,13 +547,13 @@ void displayError(String error) {
   display.print(F("Press button C to continue and ignore error."));
   display.setCursor(5, 70);
   display.print(F("The item that errored will likely not work until fixed."));
-//  delay(500); // for some reason, without a delay here, calling display() would hang the micro/crash it
+  delay(500); // for some reason, without a delay here, calling display() would hang the micro/crash it
 //  display.display();
 
-  // while(!buttonC.pressed()) // stop on this screen until button C is pressed
+  while(!buttonC.pressed()) // stop on this screen until button C is pressed
 
-  // display.setCursor(5, 100);
-  // display.print(F("Button C pressed, continuing to proceed, ignoring error..."));
+  display.setCursor(5, 100);
+  display.print(F("Button C pressed, continuing to proceed, ignoring error..."));
 //  display.display();
   delay(5000); // pause for reading time before proceeding
 }
@@ -642,9 +596,6 @@ int parseRxPacket(String rx) {
           else if (unitID == 2) {
             kegDB = parseString.toFloat();
           }
-          else if (unitID == 3) {
-            aqiDB = parseString.toFloat();
-          }
           break;
         case 3: // location of space x
           if (unitID == 1) {
@@ -653,9 +604,6 @@ int parseRxPacket(String rx) {
           else if (unitID == 2) {
             kegWBGT = parseString.toFloat();
           }
-          else if (unitID == 3) {
-            aqiRH = parseString.toFloat();
-          }
           break;
         case 4: // location of space x
           if (unitID == 1) {
@@ -663,34 +611,6 @@ int parseRxPacket(String rx) {
           }
           else if (unitID == 2) {
             kegRH = parseString.toFloat();
-          }
-          else if (unitID == 3) {
-            aqiBat = parseString.toFloat();
-          }
-          break;
-        case 5: 
-          if (unitID == 3) {
-            aqi03um = parseString.toInt();
-          }
-          break;
-        case 6: 
-          if (unitID == 3) {
-            aqi05um = parseString.toDouble();
-          }
-          break;
-        case 7: 
-          if (unitID == 3) {
-            aqi10um = parseString.toDouble();
-          }
-          break;
-        case 8: 
-          if (unitID == 3) {
-            aqi25um = parseString.toDouble();
-          }
-          break;
-        case 9: 
-          if (unitID == 3) {
-            aqi50um = parseString.toDouble();
           }
           break;
       }
