@@ -23,8 +23,10 @@ Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Fe
 #define RFM69_INT     3  // RFM69 pins on M0 Feather
 #define RFM69_RST     4  // RFM69 pins on M0 Feather
 #define LED           13 // Built-in LED on M0 Feather
-#define VBATPIN A7 // Internal battery voltage divider measurement pin
+#define VBATPIN       A7 // Internal battery voltage divider measurement pin
 #define SHTPWRPIN     5
+
+//#define SERIAL_DEBUG // comment out if serial debugging is not desired. Watchdog sleep will be disabled if defined
 
 Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
 RH_RF69 rf69(RFM69_CS, RFM69_INT); // Singleton instance of the radio driver
@@ -32,13 +34,14 @@ RH_RF69 rf69(RFM69_CS, RFM69_INT); // Singleton instance of the radio driver
 float x = 0.0; // for custom dtostrf()
 float y = 0.0; // for custom dtostrf()
 float batteryVoltage = 0; // for measuring battery voltage
-char unitID[2] = {'2'}; // for applications with multiple sensors, set this to desired unit ID before compiling
+char unitID[2] = {'1'}; // for applications with multiple sensors, set this to desired unit ID before compiling
 // Unit 1 is outdoor. Unit 2 is kegerator.
 // SHOULD ADD: Some dip switches that allow setting unitID instead of needing it to be compiled into code
 
 void setup() {
+  #ifdef SERIAL_DEBUG
   Serial.begin(115200);
-  //while (!Serial) { delay(1); } // wait until serial console is open, remove if not tethered to computer
+  #endif
 
   pinMode(RFM69_RST, OUTPUT);
   digitalWrite(RFM69_RST, LOW);
@@ -66,55 +69,64 @@ void setup() {
 }
 
 void loop() {
-  digitalWrite(SHTPWRPIN, HIGH); // turn on SHT45
-  delay(100);
-
+  digitalWrite(LED, HIGH); // turn on LED to indicate not sleeping
+  float dryBulb = 0.00;
+  float wetBulb = 0.00;
+  unsigned long tempTime = 0; // mostly for troubleshooting right now
+  unsigned long rhTime = 0; // mostly for troubleshooting right now
+  bool eventGood = false;
   sensors_event_t humidity, temp; // for SHT45
-  sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
-  float dryBulb = temp.temperature; // Get SHT45 temp
-  float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
-  
-  // Send dryBulb/WBGT/humdity/battery voltage as X XX.X XX.X XX.X X.XX
-  char radioPacket[30] = {'\0'};
-  strcat(radioPacket, unitID); // add desired unit id to device
-  strcat(radioPacket, " ");
 
-  String tempDBPacketString = String(dryBulb*1.8 + 32, 1); // convert temp to char string
-  char tempDBPacketChar[6] = {'\0'};
-  tempDBPacketString.toCharArray(tempDBPacketChar, 6);
-  strcat(radioPacket, tempDBPacketChar);
-  strcat(radioPacket, " ");
-  
-  String tempWBGTPacketString = String((0.7*wetBulb + 0.3*dryBulb)*1.8 + 32, 1); // convert temp to char string
-  char tempWBGTPacketChar[6] = {'\0'};
-  tempWBGTPacketString.toCharArray(tempWBGTPacketChar, 6);
-  strcat(radioPacket, tempWBGTPacketChar);
-  strcat(radioPacket, " ");
-  
-  String RHString = String(humidity.relative_humidity, 1);
-  char RHPacketChar[6] = {'\0'};
-  RHString.toCharArray(RHPacketChar, 6);
-  strcat(radioPacket, RHPacketChar);
-  strcat(radioPacket, " ");
-  
+  for(int i = 1; i <= 10; i++) {
+    digitalWrite(SHTPWRPIN, HIGH); // turn on SHT45
+    delay(100); // give it some time to powerup
+    eventGood = sht4.getEvent(&humidity, &temp); // request temp and humidity
+    if(eventGood) { // check if our request for temp and humidity worked
+      break;
+    }
+    else {
+      digitalWrite(SHTPWRPIN, LOW);
+      delay(50);
+
+      #ifdef SERIAL_DEBUG
+      Serial.print("failed to get event #");
+      Serial.println(i);
+      #endif
+    }
+  }
+
+  dryBulb = temp.temperature;
+  wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
   batteryVoltage = analogRead(VBATPIN); // read battery voltage
-  batteryVoltage *= 2;    // we divided by 2, so multiply back
-  batteryVoltage *= 3.3;  // Multiply by 3.3V, our reference voltage
-  batteryVoltage /= 1024; // convert to voltage
-  String batString = String(batteryVoltage, 2);
-  char batPacketChar[5] = {'\0'};
-  batString.toCharArray(batPacketChar, 5);
-  strcat(radioPacket, batPacketChar);
+  batteryVoltage *= 0.006445;    // ADC*2*3.3/1024 (Multiply ADC value by 2 because of 50% voltage divider, multiply by 3.3 for V_ref, divide by 1024 for 8-bit ADC)
 
+  String radioPacketString = "";
+  if(!eventGood) { 
+    radioPacketString = String(unitID) + " ---- ---- ---- " + String(batteryVoltage, 2); // we don't have new data, so don't send new data
+  }
+  else {
+    radioPacketString = String(unitID) + " " + String(dryBulb*1.8 + 32, 1) + " " + String((0.7*wetBulb + 0.3*dryBulb)*1.8 + 32, 1) + " "
+                                       + String(humidity.relative_humidity, 1) + " " + String(batteryVoltage, 2);
+  }
+  
+  char radioPacket[60] = {'\0'}; // need a char array to send to the radio
+  radioPacketString.toCharArray(radioPacket, 60);
+
+  #ifdef SERIAL_DEBUG
   Serial.println(radioPacket); // troubleshooting
+  #endif
   
-  //send the packet
-  rf69.send((uint8_t *)radioPacket, strlen(radioPacket));
-  rf69.waitPacketSent();
-  
+  rf69.send((uint8_t *)radioPacket, strlen(radioPacket)); // send the packet
+  rf69.waitPacketSent(); // wait until packet is sent before continuing
   rf69.sleep(); //put radio to sleep to save power
   digitalWrite(SHTPWRPIN, LOW); // turn off SHT45 for power saving while sleeping
-  Watchdog.sleep(15000); // sleep for 15 seconds
+  
+  #ifdef SERIAL_DEBUG
+  delay(8000);
+  #else
+  digitalWrite(LED, LOW); // turn off LED to indicate sleep
+  Watchdog.sleep(8000); // sleep for 15 seconds (can't actually sleep that long, but okay)
+  #endif
 }
 
 float wetBulbCalc(float DB, float RH){

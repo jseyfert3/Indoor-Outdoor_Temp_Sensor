@@ -48,7 +48,7 @@ Jonathan Seyfert
 // #define EPD_RESET   -1  // can set to -1 and share with chip Reset (can't deep sleep)
 #define TFT_CS        11
 #define TFT_RST       12
-#define TFT_DC        13
+#define TFT_DC        10
 #define VBATPIN A7 // Internal battery voltage divider measurement pin
 #define RTC_SD_CS 16 // RTC wing SD chip select pin
 #define COLOR1 EPD_BLACK  // for ThinkInk Display
@@ -58,7 +58,7 @@ Jonathan Seyfert
 #define RFM69_CS      8  // RFM69 pins on M0 Feather
 #define RFM69_INT     3  // RFM69 pins on M0 Feather
 #define RFM69_RST     4  // RFM69 pins on M0 Feather
-#define LED           13 // RFM69 pins on M0 Feather - why does RFM69 use the LED?
+#define LED           13 // Built-in LED pin, also GPIO if sharing the LED is cool
 #define SDCS          16 // CS for RTC datalogging wing SD card
 // THE ABOVE IS DUPLICATED AND DEFINED AS RTC_SD_CS as well. Why?
 #define SERIAL_DEBUG // Enables various serial debugging messages if defined
@@ -75,6 +75,11 @@ unsigned long timer = 0;  // Used to check if it's time to update display
 const int radioSendTime = 15000;  // Send data via radio every 15 seconds
 unsigned long logTimer = 0;
 const int logTime = 60000;
+unsigned long watchdogBlinkTimer = 0;
+const int watchdogBlinkInterval = 1000;
+int watchdogFadeTime = 100; // how often to adjust brightness
+int ledBrightness = 255;
+int fadeAmount = 10; //how much to adjust brightness
 //char outDB[5], outWBGT[5], outRH[6], outVolt[5]; // for parsing outdoor sensor values from Rx packet
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}; // for RTC
 DateTime bootTime; // To display time at boot, time for min/max
@@ -127,6 +132,8 @@ void setup() {
 
   pinMode(RFM69_RST, OUTPUT);  // RFM69
   digitalWrite(RFM69_RST, LOW);  // RFM69
+  pinMode(LED, OUTPUT); // Set LED pin to high
+  analogWrite(LED, ledBrightness);
 
   // reset RFM69
   digitalWrite(RFM69_RST, HIGH);
@@ -244,6 +251,20 @@ void loop() {
   if(buttonC.pressed()) { // display the Min/Max temps recorded when Button B on the e-Ink FeatherWing is pressed!
     displayKegData();
     timer = millis() - updateTime + minMaxDisplayTime; //forces display update after minMaxDisplayTime
+  }
+
+  if(millis() - watchdogBlinkTimer >= watchdogFadeTime) {
+    ledBrightness += fadeAmount;
+    if (ledBrightness <= 0) {
+      ledBrightness = 0;
+      fadeAmount = -fadeAmount;
+    }
+    if (ledBrightness >= 255) {
+      ledBrightness = 255;
+      fadeAmount = -fadeAmount;
+    }
+    analogWrite(LED, ledBrightness);
+    watchdogBlinkTimer = millis();
   }
 }
 
