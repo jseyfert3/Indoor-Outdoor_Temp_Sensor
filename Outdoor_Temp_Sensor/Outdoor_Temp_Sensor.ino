@@ -125,7 +125,7 @@ void loop() {
   delay(8000);
   #else
   digitalWrite(LED, LOW); // turn off LED to indicate sleep
-  Watchdog.sleep(8000); // sleep for 15 seconds (can't actually sleep that long, but okay)
+  Watchdog.sleep(16000); // sleep for 16 seconds (16 is maximum, but if you do between 8000 and 16000 will drop to 8)
   #endif
 }
 

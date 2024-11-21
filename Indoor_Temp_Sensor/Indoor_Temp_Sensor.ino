@@ -214,6 +214,8 @@ void loop() {
 
       #ifdef SERIAL_DEBUG
       Serial.println(rxPacket);
+      Serial.print("RSSI: ");
+      Serial.println(outRSSI);
       #endif
     }
   }
@@ -277,33 +279,40 @@ void updateDisplay(float DB, float RH, float WB) {
   display.print(F("         Indoor  Outdoor"));
   
   display.setCursor(5, 30);
-  display.print(F("Temp (F)  "));
+  display.print(F("Temp [F]  "));
   display.print(DB, 1);
   display.print(F("    "));
   display.print(outDB, 1);
 
   display.setCursor(5, 55);
-  display.print(F("RH   (%)  "));
+  display.print(F("RH   [%]  "));
   display.print(RH, 1);
   display.print(F("    "));
   display.print(outRH, 1);
 
   display.setCursor(5, 80);
   display.setTextColor(ST77XX_BLACK);
-  display.print(F("WBGT (F)  "));
+  display.print(F("WBGT [F]  "));
   display.print(0.7*WB + 0.3*DB, 1);
   display.print(F("    "));
   display.print(outWBGT, 1);
 
   display.setCursor(5, 105);
   display.setTextColor(ST77XX_BLACK);
-  display.print(F("Bat  (V)  "));
+  display.print(F("Bat  [V]  "));
   display.print(batteryVoltage(), 2);  
   display.print(F("    "));
   display.print(outBat, 2);
 
-  display.drawFastVLine(195, 0, 128, ST77XX_BLACK);
-  display.drawFastVLine(105, 0, 128, ST77XX_BLACK);
+  display.setCursor(5, 130);
+  display.setTextColor(ST77XX_BLACK);
+  display.print(F("RSSI      "));
+  display.print(F(" N/A"));  
+  display.print(F("     "));
+  display.print(outRSSI);
+
+  display.drawFastVLine(195, 0, 153, ST77XX_BLACK);
+  display.drawFastVLine(105, 0, 153, ST77XX_BLACK);
   display.drawFastHLine(0, 25, 296, ST77XX_BLACK);
 
   DateTime now = rtc.now(); // Get the current time to update the display with
