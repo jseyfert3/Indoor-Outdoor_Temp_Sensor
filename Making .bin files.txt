@@ -1,0 +1,16 @@
+https://forum.arduino.cc/t/how-do-i-create-a-uf2-file-from-2-x/1299840/2
+
+Download Adafruit's bin2uf2.js script
+Install nodejs (sudo apt install nodejs)
+
+Arduino IDE Sketch > Export Compiled Binary
+Move .bin file to desired location
+
+node <path to bin2uf2.js> <.bin file>
+
+rename created .uf2 file as desired. 
+
+To Use:
+Double-click reset button
+Drag file into USB drive that shows up
+Micro will automatically reboot and apply firmware

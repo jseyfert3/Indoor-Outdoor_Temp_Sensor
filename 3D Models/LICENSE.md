@@ -1,0 +1,1 @@
+The files in [Indoor-Outdoor_Temp_Sensor 3D Models](https://github.com/jseyfert3/Indoor-Outdoor_Temp_Sensor/tree/main/3D%20Models) are Copyright 2024 by Jonathan Seyfert and are licensed under [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)
