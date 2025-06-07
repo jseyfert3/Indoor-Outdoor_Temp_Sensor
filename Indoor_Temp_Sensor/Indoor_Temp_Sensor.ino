@@ -760,6 +760,8 @@ void configurationMenu() {
               }
               analogWrite(TFT_BACKLIGHT, tftBrightness[tftBrightLevel]);
             }
+            else
+              break;
           }
           return configurationMenu();
         }
