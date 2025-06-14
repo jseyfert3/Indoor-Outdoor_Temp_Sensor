@@ -1,6 +1,11 @@
 /3D\ Models/*.FCBak
 /3D\ Models/*.3mf
 /3D\ Models/*.bgcode
+/Documentation/Pictures
 /Documentation/Indoor_Schematic/Indoor_Schematic-backups/
 /Documentation/Indoor_Schematic/*.lck
 /Documentation/Indoor_Schematic/#auto_saved_files#
+/Documentation/Outdoor_Schematic/Outdoor_Schematic-backups
+/Documentation/Outdoor_Schematic/*.lck
+/Documentation/Outdoor_Schematic/#auto_saved_files#
+
