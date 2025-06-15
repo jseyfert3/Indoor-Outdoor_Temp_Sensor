@@ -1,0 +1,5 @@
+The Arduino IDE is stupid, so you can't tell the sketch to link to this file. 
+
+To use: Copy this folder to your Arduino libraries folder.
+
+This is the stock json.hpp file that can be found in releases at github.com/nlohmann/json, with the exception that I had to remove the single line comments on lines 68-70, because for some reason the Arduino IDE compiling process would exit with error 1 when those comments were in place. The comments do not cause an issue (AS COMMENTS SHOULD!) when I compile with c++ 20 using gcc on my Linux machine. 

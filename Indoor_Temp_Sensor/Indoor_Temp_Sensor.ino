@@ -230,7 +230,7 @@ void loop() {
       #ifdef SERIAL_DEBUG
       Serial.print("Recieved packet from unit #");
       Serial.print(from);
-      Serial.print(". : ");
+      Serial.print(": ");
       Serial.println(rxPacket);
       Serial.print("RSSI: ");
       Serial.println(driver.lastRssi());

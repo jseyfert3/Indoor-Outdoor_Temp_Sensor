@@ -28,6 +28,7 @@ You should have received a copy of the GNU General Public License along with Ind
 #include <RHReliableDatagram.h> // For RFM69
 #include <Adafruit_SHT4x.h> // for SHT45 temp/humidity sensor
 #include <Adafruit_SleepyDog.h> // for watchdog sleep for power savings
+#include <json.hpp> // Must place this in your Arduino IDE libraries folder in a folder called "json"
 
 #define RF69_FREQ 915.0  // Frequency of RFM69
 #define RFM69_CS      8  // RFM69 SPI chip select pin
@@ -37,8 +38,9 @@ You should have received a copy of the GNU General Public License along with Ind
 #define VBATPIN       A7 // Internal battery voltage divider measurement pin
 #define SHTPWRPIN     5  // Pin to supply power to SHT45 to turn it on and off for power savings
 
-//#define SERIAL_DEBUG // comment out if serial debugging is not desired. Watchdog sleep will be disabled if defined
+#define SERIAL_DEBUG // comment out if serial debugging is not desired. Watchdog sleep will be disabled if defined
 
+extern "C" char *sbrk(int i);  // for FreeMem()
 float x = 0.0; // for custom dtostrf()
 float y = 0.0; // for custom dtostrf()
 float batteryVoltage = 0; // for measuring battery voltage
@@ -83,23 +85,65 @@ void setup() {
   driver.setEncryptionKey(key);
 }
 
-void loop() {
+void loop()
+{
   //digitalWrite(LED, HIGH); // turn on LED to indicate not sleeping
   float dryBulb = 0.00;
   float wetBulb = 0.00;
   unsigned long tempTime = 0; // mostly for troubleshooting right now
   unsigned long rhTime = 0; // mostly for troubleshooting right now
-  bool eventGood = false;
   sensors_event_t humidity, temp; // for SHT45
 
-  for(int i = 1; i <= 10; i++) {
+  for(int i = 1; i <= 10; i++)
+  {
     digitalWrite(SHTPWRPIN, HIGH); // turn on SHT45
     delay(100); // give it some time to powerup
-    eventGood = sht4.getEvent(&humidity, &temp); // request temp and humidity
-    if(eventGood) { // check if our request for temp and humidity worked
+    if(sht4.getEvent(&humidity, &temp)) // check if our request for temp and humidity worked
+    {
+      Serial.print("free memory: ");
+      Serial.println(FreeMem());
+      nlohmann::json message; // empty json struction to hold message we want to send
+      message["dry_bulb"] = round(temp.temperature*10)/10.0; // add dry bulb temp to json, rounding to 1 decimal place
+      message["humidity"] = round(humidity.relative_humidity*10)/10.0; // add RH to json, rounding to 1 decimal place
+      message["wet_bulb"] = round(wetBulbCalc(temp.temperature, humidity.relative_humidity)*10)/10.0; // add web bulb temp to json, round to 1 decimal place
+      message["battery_voltage"] = round(analogRead(VBATPIN)*0.006445*100)/100; // ADC*2*3.3/1024 *2 - 50% voltage divider. *3.3 - V_ref. /1024 - 8-bit ADC. Round 2 decimal places
+      
+      Serial.print("free memory: ");
+      Serial.println(FreeMem());
+
+      String packet = String(message.dump().c_str());
+      //strcat(packet, message.dump().c_str());
+
+      #ifdef SERIAL_DEBUG
+      Serial.print("json contents: ");
+      Serial.println(packet);
+      #endif
+
+      
+
+      char radioPacket[60] = {'\0'};
+      char radioPacket2[60] = {'\0'};
+      String sub1 = packet.substring(0, 59);
+      String sub2 = packet.substring(59);
+      sub1.toCharArray(radioPacket, 60);
+      sub2.toCharArray(radioPacket2, 60);
+      //sub2.toCharArray(radioPacket2, sub2.length());
+      //packet.remove(0, 59);
+      //packet.substring(60).toCharArray(radioPacket2, packet.substring(60).length() + 1);
+
+      #ifdef SERIAL_DEBUG
+      Serial.println(sub1);
+      Serial.println(radioPacket);
+      Serial.println(sub2);
+      Serial.println(radioPacket2);
+      Serial.print("free memory: ");
+      Serial.println(FreeMem());
+      #endif
+
       break;
     }
-    else {
+    else
+    {
       digitalWrite(SHTPWRPIN, LOW);
       delay(50);
 
@@ -109,45 +153,46 @@ void loop() {
       #endif
     }
   }
-
-  dryBulb = temp.temperature;
-  wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
-  batteryVoltage = analogRead(VBATPIN); // read battery voltage
-  batteryVoltage *= 0.006445;    // ADC*2*3.3/1024 (Multiply ADC value by 2 because of 50% voltage divider, multiply by 3.3 for V_ref, divide by 1024 for 8-bit ADC)
-
-  String radioPacketString = "";
-  if(!eventGood) { 
-    radioPacketString = "---- ---- ---- " + String(batteryVoltage, 2); // we don't have new data, so don't send new data
-  }
-  else {
-    radioPacketString = String(dryBulb*1.8 + 32, 1) + " " + String((0.7*wetBulb + 0.3*dryBulb)*1.8 + 32, 1) + " "
-                                       + String(humidity.relative_humidity, 1) + " " + String(batteryVoltage, 2);
-  }
   
-  char radioPacket[60] = {'\0'}; // need a char array to send to the radio
-  radioPacketString.toCharArray(radioPacket, 60);
-
-  #ifdef SERIAL_DEBUG
-  Serial.println(radioPacket); // troubleshooting
-  #endif
+  // dryBulb = temp.temperature;
   
-  // rf69.send((uint8_t *)radioPacket, strlen(radioPacket)); // send the packet
-  // rf69.waitPacketSent(); // wait until packet is sent before continuing
-  // rf69.sleep(); //put radio to sleep to save power
-  if (manager.sendtoWait((uint8_t *)radioPacket, sizeof(radioPacket), rxAddress)) // Send the packet to the base station
-  {
-    #ifdef SERIAL_DEBUG
-    Serial.println("Received an ack for sent message.");
-    #endif
-    digitalWrite(LED, LOW);
-  } 
-  else
-  {
-    #ifdef SERIAL_DEBUG
-    Serial.println("Did not receive ack for sent message!");
-    #endif
-    digitalWrite(LED, HIGH); // turn on LED to indicate failure to recieve ack
-  }
+  // wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity);
+  // batteryVoltage = analogRead(VBATPIN); // read battery voltage
+  // batteryVoltage *= 0.006445;    // ADC*2*3.3/1024 (Multiply ADC value by 2 because of 50% voltage divider, multiply by 3.3 for V_ref, divide by 1024 for 8-bit ADC)
+
+  // String radioPacketString = "";
+  // if(!eventGood) { 
+  //   radioPacketString = "---- ---- ---- " + String(batteryVoltage, 2); // we don't have new data, so don't send new data
+  // }
+  // else {
+  //   radioPacketString = String(dryBulb*1.8 + 32, 1) + " " + String((0.7*wetBulb + 0.3*dryBulb)*1.8 + 32, 1) + " "
+  //                                      + String(humidity.relative_humidity, 1) + " " + String(batteryVoltage, 2);
+  // }
+  
+  // char radioPacket[60] = {'\0'}; // need a char array to send to the radio
+  // radioPacketString.toCharArray(radioPacket, 60);
+
+  // #ifdef SERIAL_DEBUG
+  // Serial.println(radioPacket); // troubleshooting
+  // #endif
+  
+  // // rf69.send((uint8_t *)radioPacket, strlen(radioPacket)); // send the packet
+  // // rf69.waitPacketSent(); // wait until packet is sent before continuing
+  // // rf69.sleep(); //put radio to sleep to save power
+  // if (manager.sendtoWait((uint8_t *)radioPacket, sizeof(radioPacket), rxAddress)) // Send the packet to the base station
+  // {
+  //   #ifdef SERIAL_DEBUG
+  //   Serial.println("Received an ack for sent message.");
+  //   #endif
+  //   digitalWrite(LED, LOW);
+  // } 
+  // else
+  // {
+  //   #ifdef SERIAL_DEBUG
+  //   Serial.println("Did not receive ack for sent message!");
+  //   #endif
+  //   digitalWrite(LED, HIGH); // turn on LED to indicate failure to recieve ack
+  // }
   // in the future, try doing an if (manager.sendtoWait() and do something if it doesn't send. true is returned if it gets ack, false if not
   digitalWrite(SHTPWRPIN, LOW); // turn off SHT45 for power saving while sleeping
   
@@ -162,4 +207,9 @@ void loop() {
 float wetBulbCalc(float DB, float RH){
   float WBC = DB*(atan(0.151977*pow(RH + 8.313659,0.5))) + atan(DB + RH) - atan(RH - 1.676331) + 0.00391838*pow(RH, 1.5)*atan(0.023101*RH) - 4.686035;
   return WBC;
+}
+
+int FreeMem () {  //http://forum.arduino.cc/index.php?topic=365830.msg2542879#msg2542879
+  char stack_dummy = 0;
+  return &stack_dummy - sbrk(0);
 }
