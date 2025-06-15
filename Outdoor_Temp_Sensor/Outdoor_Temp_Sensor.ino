@@ -115,17 +115,20 @@ void loop()
       Serial.println(jsonMsg);
       #endif
 
-      uint8_t numPacs = jsonMsg.length()/59 + 1; // each packet sent can be 60 characters long, but need to leave one char for EOM, so we get 59 sendable chars per packet
+      uint8_t numPacs = jsonMsg.length()/57 + 1; // each packet sent can be 60 characters long, but need to leave one char for EOM, so we get 59 sendable chars per packet, - 2 for X of Y pac #
       char packets[numPacs][60] = {'\0'}; // array of char arrays to hold packets for sending
       for (uint8_t i = 0; i < numPacs; i++) // sub-device json String into 59 char log strings, then convert sub-strings to char arrays and feed into array of char packets
       {
-        String s = jsonMsg.substring(i*59, i*59 + 59);
-        s.toCharArray(packets[i], 60);
+        String s = String(String(char(i + 1)) + String(char(numPacs))); // packet header: X packet of Y # packets. Typecast first and second chars of packet to int to decode on Rx.
+        s += jsonMsg.substring(i*57, i*57 + 57); // concat 57 chars of message after X of Y header, leaving 1 char for Null termination of char string
+        s.toCharArray(packets[i], 60); // Convert String to char string for sending via packet radio
       }
 
       #ifdef SERIAL_DEBUG
-      Serial.println(packets[0]);
-      Serial.println(packets[1]);
+      for (uint8_t i = 0; i < numPacs; i++)
+      {
+        Serial.println(packets[i]);
+      }
       Serial.print("free memory: ");
       Serial.println(FreeMem());
       #endif

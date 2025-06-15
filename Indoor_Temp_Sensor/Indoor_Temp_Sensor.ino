@@ -231,11 +231,16 @@ void loop() {
       #ifdef SERIAL_DEBUG
       Serial.print("Recieved packet from unit #");
       Serial.print(from);
+      Serial.print(". Packet ");
+      Serial.print(int(rxPacket[0]));
+      Serial.print(" of ");
+      Serial.print(int(rxPacket[1]));
       Serial.print(": ");
       Serial.println(rxPacket);
       Serial.print("RSSI: ");
       Serial.println(driver.lastRssi());
-      Serial.println();
+      Serial.print("Free memory: ");
+      Serial.println(FreeMem());
       #endif
     }
   }
