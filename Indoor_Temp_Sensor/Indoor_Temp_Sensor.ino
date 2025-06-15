@@ -42,6 +42,7 @@ You should have received a copy of the GNU General Public License along with Ind
 #include "RTClib.h" // For RTC
 #include "Button.h" //for buttons
 #include <array>
+#include <json.hpp> // for nlohmann/json
 
 #define VBATPIN       A7 // 9/A7 - Internal battery voltage divider measurement pin
 #define RF69_FREQ     915.0  // RFM69 frequency (MHz)

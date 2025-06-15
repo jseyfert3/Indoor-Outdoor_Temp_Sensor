@@ -100,44 +100,44 @@ void loop()
     delay(100); // give it some time to powerup
     if(sht4.getEvent(&humidity, &temp)) // check if our request for temp and humidity worked
     {
-      Serial.print("free memory: ");
-      Serial.println(FreeMem());
       nlohmann::json message; // empty json struction to hold message we want to send
       message["dry_bulb"] = round(temp.temperature*10)/10.0; // add dry bulb temp to json, rounding to 1 decimal place
       message["humidity"] = round(humidity.relative_humidity*10)/10.0; // add RH to json, rounding to 1 decimal place
       message["wet_bulb"] = round(wetBulbCalc(temp.temperature, humidity.relative_humidity)*10)/10.0; // add web bulb temp to json, round to 1 decimal place
       message["battery_voltage"] = round(analogRead(VBATPIN)*0.006445*100)/100; // ADC*2*3.3/1024 *2 - 50% voltage divider. *3.3 - V_ref. /1024 - 8-bit ADC. Round 2 decimal places
-      
-      Serial.print("free memory: ");
-      Serial.println(FreeMem());
+      message["need to use up space"] = " so that I can see if my code works for arbitrary lengths of json message sending!!!";
 
-      String packet = String(message.dump().c_str());
+      String jsonMsg = String(message.dump().c_str());
       //strcat(packet, message.dump().c_str());
 
       #ifdef SERIAL_DEBUG
       Serial.print("json contents: ");
-      Serial.println(packet);
+      Serial.println(jsonMsg);
       #endif
 
-      char radioPacket[60] = {'\0'};
-      char radioPacket2[60] = {'\0'};
-      String sub1 = packet.substring(0, 59);
-      String sub2 = packet.substring(59);
-      sub1.toCharArray(radioPacket, 60);
-      sub2.toCharArray(radioPacket2, 60);
+      uint8_t numPacs = jsonMsg.length()/59 + 1; // each packet sent can be 60 characters long, but need to leave one char for EOM, so we get 59 sendable chars per packet
+      char packets[numPacs][60] = {'\0'}; // array of char arrays to hold packets for sending
+      for (uint8_t i = 0; i < numPacs; i++) // sub-device json String into 59 char log strings, then convert sub-strings to char arrays and feed into array of char packets
+      {
+        String s = jsonMsg.substring(i*59, i*59 + 59);
+        s.toCharArray(packets[i], 60);
+      }
 
       #ifdef SERIAL_DEBUG
-      Serial.println(sub1);
-      Serial.println(radioPacket);
-      Serial.println(sub2);
-      Serial.println(radioPacket2);
+      Serial.println(packets[0]);
+      Serial.println(packets[1]);
       Serial.print("free memory: ");
       Serial.println(FreeMem());
       #endif
 
-      bool pac1 = manager.sendtoWait((uint8_t *)radioPacket, sizeof(radioPacket), rxAddress);
-      bool pac2 = manager.sendtoWait((uint8_t *)radioPacket2, sizeof(radioPacket2), rxAddress);
-      if (pac1 && pac2)
+      bool pac[numPacs];
+      bool allSent = false;
+      for (uint8_t i; i < numPacs; i++)
+      {
+        if (!manager.sendtoWait((uint8_t *)packets[i], sizeof(packets[i]), rxAddress))
+          allSent = true;
+      }
+      if (allSent == false)
       {
         #ifdef SERIAL_DEBUG
         Serial.println("Received an ack for sent messages.");
