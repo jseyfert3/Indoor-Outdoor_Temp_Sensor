@@ -121,7 +121,7 @@ uint8_t encryptionKey[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // e
                   0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}; // should change the default encryption key...
 String rxData;
 
-enum Addresses {Base = 1, Outdoor = 2, Basement = 3,}; // addresses for all units in network
+enum Addresses {Base = 0, Outdoor = 1, Basement = 2,}; // addresses for all units in network
 nlohmann::json j; // one json to hold all variables from all units
 
 //nlohmann::json j2; // json to hold data from unit 2
@@ -245,7 +245,6 @@ void loop()
       if (!len) return; // checks to see if message length is 0. Unclear why that's needed, since rf69.available should not return true if there is no message?
       //buf[len] = 0; // what does this do?
       String rxPacket = ((char*)buf); // transfer message into String variable
-      int id = from;
       handleRxPacket(buf, from);
     }
   }
@@ -254,13 +253,21 @@ void loop()
   {
     sensors_event_t humidity, temp; // for SHT45
     sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
-    float dryBulb = temp.temperature; // Get SHT45 temp
-    if(dryBulb > indoorMax) // update indoor Max temp if current temp is higher
-      indoorMax = dryBulb;
-    if(dryBulb < indoorMin) // update indoor Min temp if current temp is lower
-      indoorMin = dryBulb;
-    float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity); // calculate wet bulb temp
-    updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32); // update display with current readings
+    nlohmann::json indoor;
+    indoor["dry_bulb"] = round(temp.temperature*10)/10.0; // add dry bulb temp to json, rounding to 1 decimal place
+    indoor["humidity"] = round(humidity.relative_humidity*10)/10.0; // add RH to json, rounding to 1 decimal place
+    indoor["wet_bulb"] = round(wetBulbCalc(temp.temperature, humidity.relative_humidity)*10)/10.0; // add web bulb temp to json, round to 1 decimal place
+    indoor["battery_voltage"] = round(analogRead(VBATPIN)*0.006445*100)/100; // ADC*2*3.3/1024 *2 - 50% voltage divider. *3.3 - V_ref. /1024 - 8-bit ADC. Round 2 decimal places
+    updateJson(indoor, 0);
+
+    // float dryBulb = temp.temperature; // Get SHT45 temp
+    // if(dryBulb > indoorMax) // update indoor Max temp if current temp is higher
+    //   indoorMax = dryBulb;
+    // if(dryBulb < indoorMin) // update indoor Min temp if current temp is lower
+    //   indoorMin = dryBulb;
+    // float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity); // calculate wet bulb temp
+    //updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32); // update display with current readings
+    updateDisplay((j["units"][0]["dry_bulb"].template get<float>())*1.8 + 32, j["units"][0]["humidity"].template get<float>(), (j["units"][0]["wet_bulb"].template get<float>())*1.8 + 32); // update display with current readings
     timer = millis(); // reset timer so this function is called at appropriate timing 
 
     // if (j["units"][1]["wet_bulb"] != nullptr)
@@ -339,6 +346,14 @@ void handleRxPacket(uint8_t buf[60], uint8_t from)
     #endif
 
     nlohmann::json jRx = nlohmann::json::parse(rxData); // temp json object to hold received data
+    jRx["RSSI"] = driver.lastRssi();
+    rxData = ""; // wipe string
+    return updateJson(jRx, from);
+  }
+}
+
+void updateJson(nlohmann::json json, uint8_t unit)
+{
     nlohmann::json jt; // temp json object to hold time of rx
     DateTime now = rtc.now();
     jt["year"] = now.year();
@@ -347,18 +362,26 @@ void handleRxPacket(uint8_t buf[60], uint8_t from)
     jt["hour"] = now.hour();
     jt["minute"] = now.minute();
     jt["second"] = now.second();
-    j["units"][from - 1].update(jt); // update time in global json object for this unit
-    j["units"][from - 1].update(jRx); // update global json contents with newly recieved data
-    rxData = ""; // wipe string
+    j["units"][unit].update(jt); // update time in global json object for this unit
+    j["units"][unit].update(json); // update global json contents with newly recieved data
+    
 
     #ifdef SERIAL_DEBUG
-    Serial.print("Json contents after rx: ");
+    Serial.print("Json contents after update: ");
     Serial.println(j.dump().c_str());
     #endif
-  }
 }
 
-void updateDisplay(float DB, float RH, float WB) {
+void updateDisplay(float DB, float RH, float WB)
+{
+  if (j["units"][0] == nullptr || j["units"][1] == nullptr)
+    return;
+  float outsideDB = j["units"][1]["dry_bulb"].template get<float>()*1.8 + 32;
+  float outsideWB = j["units"][1]["wet_bulb"].template get<float>()*1.8 + 32;
+  float outsideRH = j["units"][1]["humidity"].template get<float>();
+  float outsideWBGT = 0.7*outsideDB + 0.3*outsideWB;
+  float outsideBat = j["units"][1]["battery_voltage"].template get<float>();
+  int8_t outsideRSSI = j["units"][1]["RSSI"].template get<int8_t>();
   display.fillScreen(ST77XX_WHITE);
   display.setTextSize(2);
   display.setTextColor(ST77XX_BLACK);
@@ -369,34 +392,34 @@ void updateDisplay(float DB, float RH, float WB) {
   display.print(F("Temp [F]  "));
   display.print(DB, 1);
   display.print(F("    "));
-  display.print(outDB, 1);
+  display.print(outsideDB, 1);
 
   display.setCursor(5, 55);
   display.print(F("RH   [%]  "));
   display.print(RH, 1);
   display.print(F("    "));
-  display.print(outRH, 1);
+  display.print(outsideRH, 1);
 
   display.setCursor(5, 80);
   display.setTextColor(ST77XX_BLACK);
   display.print(F("WBGT [F]  "));
   display.print(0.7*WB + 0.3*DB, 1);
   display.print(F("    "));
-  display.print(outWBGT, 1);
+  display.print(outsideWBGT, 1);
 
   display.setCursor(5, 105);
   display.setTextColor(ST77XX_BLACK);
   display.print(F("Bat  [V]  "));
   display.print(batteryVoltage(), 2);  
   display.print(F("    "));
-  display.print(outBat, 2);
+  display.print(outsideBat, 2);
 
   display.setCursor(5, 130);
   display.setTextColor(ST77XX_BLACK);
   display.print(F("RSSI      "));
   display.print(F(" N/A"));  
   display.print(F("     "));
-  display.print(outRSSI);
+  display.print(outsideRSSI);
 
   #ifdef SERIAL_DEBUG
   display.setCursor(5, 155);
@@ -409,32 +432,32 @@ void updateDisplay(float DB, float RH, float WB) {
   display.drawFastVLine(105, 0, 153, ST77XX_BLACK);
   display.drawFastHLine(0, 25, 296, ST77XX_BLACK);
 
-  DateTime now = rtc.now(); // Get the current time to update the display with
+  // DateTime now = rtc.now(); // Get the current time to update the display with
   display.setTextSize(1);
   display.setTextColor(ST77XX_BLACK);
   display.setCursor(5, 4);
   display.print(F("Last update:"));
   display.setCursor(5, 14);
   display.print("I-"); // indoor display update time
-  if (now.hour() < 10) {
+  if (j["units"][0]["hour"].template get<uint8_t>() < 10) {
     display.print("0");
   }
-  display.print(now.hour(), DEC);
+  display.print(j["units"][0]["hour"].template get<uint8_t>(), DEC);
   display.print(":");
-  if (now.minute() < 10) {
+  if (j["units"][0]["minute"].template get<uint8_t>() < 10) {
     display.print("0");
   }
-  display.print(now.minute(), DEC);
+  display.print(j["units"][0]["minute"].template get<uint8_t>(), DEC);
   display.print("  O-"); // outdoor display update time
-  if (outRxTime.hour() < 10) {
+  if (j["units"][1]["hour"].template get<uint8_t>() < 10) {
     display.print("0");
   }
-  display.print(outRxTime.hour(), DEC);
+  display.print(j["units"][1]["hour"].template get<uint8_t>(), DEC);
   display.print(":");
-  if (outRxTime.minute() < 10) {
+  if (j["units"][1]["minute"].template get<uint8_t>() < 10) {
     display.print("0");
   }
-  display.print(outRxTime.minute(), DEC);
+  display.print(j["units"][1]["minute"].template get<uint8_t>(), DEC);
 
 }
 

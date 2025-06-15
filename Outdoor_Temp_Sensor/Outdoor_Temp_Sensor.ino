@@ -44,14 +44,11 @@ extern "C" char *sbrk(int i);  // for FreeMem()
 float x = 0.0; // for custom dtostrf()
 float y = 0.0; // for custom dtostrf()
 float batteryVoltage = 0; // for measuring battery voltage
-const uint8_t rxAddress = 1; // Address of base station
-const uint8_t unitId = 2;    // Address of this unit. Change as desired
-// Unit 1 is outdoor. Unit 2 is kegerator.
-// SHOULD ADD: Some dip switches that allow setting unitID instead of needing it to be compiled into code (thought that would eat up a lot of IO)
+enum Addresses {Base = 0, Outdoor = 1, Basement = 2,}; // addresses for all units in network
 
 Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
 RH_RF69 driver(RFM69_CS, RFM69_INT); // Singleton instance of the radio driver
-RHReliableDatagram manager(driver, unitId); // Class to manage message delivery and receipt, using the driver declared above
+RHReliableDatagram manager(driver, Outdoor); // Class to manage message delivery and receipt, using the driver declared above
 
 void setup() {
   #ifdef SERIAL_DEBUG
@@ -135,7 +132,7 @@ void loop()
       bool allSent = false;
       for (uint8_t i; i < numPacs; i++) // send all packets
       {
-        if (!manager.sendtoWait((uint8_t *)packets[i], sizeof(packets[i]), rxAddress))
+        if (!manager.sendtoWait((uint8_t *)packets[i], sizeof(packets[i]), Base))
           allSent = true;
       }
       if (allSent == false)
