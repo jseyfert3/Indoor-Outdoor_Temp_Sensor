@@ -119,17 +119,12 @@ void loop()
       Serial.println(packet);
       #endif
 
-      
-
       char radioPacket[60] = {'\0'};
       char radioPacket2[60] = {'\0'};
       String sub1 = packet.substring(0, 59);
       String sub2 = packet.substring(59);
       sub1.toCharArray(radioPacket, 60);
       sub2.toCharArray(radioPacket2, 60);
-      //sub2.toCharArray(radioPacket2, sub2.length());
-      //packet.remove(0, 59);
-      //packet.substring(60).toCharArray(radioPacket2, packet.substring(60).length() + 1);
 
       #ifdef SERIAL_DEBUG
       Serial.println(sub1);
@@ -140,7 +135,23 @@ void loop()
       Serial.println(FreeMem());
       #endif
 
-      break;
+      bool pac1 = manager.sendtoWait((uint8_t *)radioPacket, sizeof(radioPacket), rxAddress);
+      bool pac2 = manager.sendtoWait((uint8_t *)radioPacket2, sizeof(radioPacket2), rxAddress);
+      if (pac1 && pac2)
+      {
+        #ifdef SERIAL_DEBUG
+        Serial.println("Received an ack for sent messages.");
+        #endif
+        digitalWrite(LED, LOW);
+      } 
+      else
+      {
+        #ifdef SERIAL_DEBUG
+        Serial.println("Did not receive ack for one or more of the sent messages!");
+        #endif
+        digitalWrite(LED, HIGH); // turn on LED to indicate failure to recieve ack
+      }
+      break; // leave the for loop
     }
     else
     {
