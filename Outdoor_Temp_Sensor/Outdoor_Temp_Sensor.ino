@@ -105,10 +105,8 @@ void loop()
       message["humidity"] = round(humidity.relative_humidity*10)/10.0; // add RH to json, rounding to 1 decimal place
       message["wet_bulb"] = round(wetBulbCalc(temp.temperature, humidity.relative_humidity)*10)/10.0; // add web bulb temp to json, round to 1 decimal place
       message["battery_voltage"] = round(analogRead(VBATPIN)*0.006445*100)/100; // ADC*2*3.3/1024 *2 - 50% voltage divider. *3.3 - V_ref. /1024 - 8-bit ADC. Round 2 decimal places
-      message["need to use up space"] = " so that I can see if my code works for arbitrary lengths of json message sending!!!";
 
       String jsonMsg = String(message.dump().c_str());
-      //strcat(packet, message.dump().c_str());
 
       #ifdef SERIAL_DEBUG
       Serial.print("json contents: ");
@@ -135,7 +133,7 @@ void loop()
 
       bool pac[numPacs];
       bool allSent = false;
-      for (uint8_t i; i < numPacs; i++)
+      for (uint8_t i; i < numPacs; i++) // send all packets
       {
         if (!manager.sendtoWait((uint8_t *)packets[i], sizeof(packets[i]), rxAddress))
           allSent = true;

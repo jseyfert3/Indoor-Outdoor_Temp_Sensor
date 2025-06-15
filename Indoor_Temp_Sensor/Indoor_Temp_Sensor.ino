@@ -62,9 +62,6 @@ You should have received a copy of the GNU General Public License along with Ind
 #define MENU_SELECT ST77XX_WHITE, ST77XX_BLACK
 #define MENU_UNSELECT ST77XX_BLACK, ST77XX_WHITE
 
-#define BASE_STATION_ADDRESS 1 // Address of base station
-#define OUTDOOR_ADDRESS      2 // Address of outdoor unit
-
 /*
 M0 USED PINS NOT DEFINED ABOVE:
   For SPI interface (LCD/SD card/RFM69):
@@ -102,11 +99,11 @@ const int watchdogBlinkInterval = 1000;
 int watchdogFadeTime = 100; // how often to adjust brightness
 int ledBrightness = 255; // brightness of the built-in LED
 int fadeAmount = 10; //how much to adjust brightness
-int tftBrightness[] = {1, 10, 40, 100, 255}; // brightness of the TFT display backlight
+const int tftBrightness[] = {1, 10, 40, 100, 255}; // brightness of the TFT display backlight
 int tftBrightLevel = 4;
-int altDisplayTime = 10000; // time to display alternate screens (min/max, alternate sensor)
+const int altDisplayTime = 10000; // time to display alternate screens (min/max, alternate sensor)
 //char outDB[5], outWBGT[5], outRH[6], outVolt[5]; // for parsing outdoor sensor values from Rx packet
-char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}; // for RTC
+const char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}; // for RTC
 DateTime bootTime; // To display time at boot, time for min/max
 DateTime outRxTime; // To display time outdoor sensor last updated
 DateTime kegRxTime; // To display time keg sensor last updated
@@ -122,6 +119,35 @@ unsigned int aqi03um, aqi05um, aqi10um, aqi25um, aqi50um, aqi100um; // 0.3-10 um
 int outRSSI, kegRSSI, aqiRSSI; // for RSSI of remote sensors
 uint8_t encryptionKey[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // encryption key for RMF69 radio. Must match that on remote sensor!
                   0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}; // should change the default encryption key...
+String rxData;
+
+enum Addresses {Base = 1, Outdoor = 2, Basement = 3,}; // addresses for all units in network
+nlohmann::json j; // one json to hold all variables from all units
+
+//nlohmann::json j2; // json to hold data from unit 2
+/*
+Dealing with json data:
+If you want a String of a specific item, then use:
+  String(j2["wet_bulb"].dump().c_str())
+
+Similarily, if you wanted to do a numerical comparison on a value in the json, you could do:
+  if (String(j2["wet_bulb"].dump().c_str()).toFloat() > 42)
+
+Kinda clunky, but I'm still thinking that OVERALL using the json will be better for handling recieved data.
+
+No, actually you can do:
+  if (j2["wet_bulb"] != nullptr)
+  {
+    auto number = j2["wet_bulb"].template get<double>();
+    Serial.println(number);
+  }
+Just need to make sure there's a value one way or another (check for nullptr or verify you wrote the data first)
+
+Can update a value (in j2) with:
+  nlohmann::json j;
+  j["wet_bulb"] = 42.42;
+  j2.update(j);
+*/
 
 //RTC_PCF8523 rtc; // for RTC
 RTC_DS3231 rtc; // for RTC
@@ -131,7 +157,7 @@ Button buttonSelect(BUTTON_SELECT); // for a down button
 Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
 Adafruit_ST7789 display = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST); // for LCD
 RH_RF69 driver(RFM69_CS, RFM69_INT); // Singleton instance of the radio driver
-RHReliableDatagram manager(driver, BASE_STATION_ADDRESS); // Class to manage message delivery and receipt, using the driver declared above
+RHReliableDatagram manager(driver, Base); // Class to manage message delivery and receipt, using the driver declared above
 
 void setup() {
   #ifdef SERIAL_DEBUG
@@ -207,8 +233,10 @@ void setup() {
   updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32);
 }
 
-void loop() {
-  if (manager.available()) { // we've received a packet
+void loop()
+{
+  if (manager.available()) // we've received a packet
+  {
     uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
     uint8_t len = sizeof(buf);
     uint8_t from;
@@ -218,46 +246,28 @@ void loop() {
       //buf[len] = 0; // what does this do?
       String rxPacket = ((char*)buf); // transfer message into String variable
       int id = from;
-      parseRxPacket(rxPacket, from); // parses out received packet into individual float variables and checks/updates outdoor Min/Max temps
-      if (id == 2) {
-        outRxTime = rtc.now(); // Get time, so we can display time outside data was last received
-        outRSSI = driver.lastRssi();
-      }
-      else if (id == 3) { // kegerator sensor
-        kegRxTime = rtc.now();
-        kegRSSI = driver.lastRssi();
-      }
-
-      #ifdef SERIAL_DEBUG
-      Serial.print("Recieved packet from unit #");
-      Serial.print(from);
-      Serial.print(". Packet ");
-      Serial.print(int(rxPacket[0]));
-      Serial.print(" of ");
-      Serial.print(int(rxPacket[1]));
-      Serial.print(": ");
-      Serial.println(rxPacket);
-      Serial.print("RSSI: ");
-      Serial.println(driver.lastRssi());
-      Serial.print("Free memory: ");
-      Serial.println(FreeMem());
-      #endif
+      handleRxPacket(buf, from);
     }
   }
   
-  if(millis() - timer >= updateTime) { // run every updateTime ms interval
+  if(millis() - timer >= updateTime) // run every updateTime ms interval
+  {
     sensors_event_t humidity, temp; // for SHT45
     sht4.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
     float dryBulb = temp.temperature; // Get SHT45 temp
-    if(dryBulb > indoorMax) { // update indoor Max temp if current temp is higher
+    if(dryBulb > indoorMax) // update indoor Max temp if current temp is higher
       indoorMax = dryBulb;
-    }
-    if(dryBulb < indoorMin) { // update indoor Min temp if current temp is lower
+    if(dryBulb < indoorMin) // update indoor Min temp if current temp is lower
       indoorMin = dryBulb;
-    }
     float wetBulb = wetBulbCalc(dryBulb, humidity.relative_humidity); // calculate wet bulb temp
     updateDisplay(dryBulb*1.8 + 32, humidity.relative_humidity, wetBulb*1.8 + 32); // update display with current readings
-    timer = millis(); // reset timer so this function is called at appropriate timing
+    timer = millis(); // reset timer so this function is called at appropriate timing 
+
+    // if (j["units"][1]["wet_bulb"] != nullptr)
+    // {
+    //   float number = j["units"][1]["wet_bulb"].template get<float>();
+    //   Serial.println(number);
+    // }
   }
 
   if(millis() - logTimer >= logTime) { // log data every "logTime" ms interval
@@ -309,6 +319,45 @@ void loop() {
   }
 }
 
+void handleRxPacket(uint8_t buf[60], uint8_t from)
+{
+  uint8_t num = uint8_t(buf[0]); // first char is packet number
+  uint8_t numPac = uint8_t(buf[1]); // second char is packet total
+  uint8_t buf2[58] = {'\0'};
+  for (uint8_t i = 0; i < 58; i++)
+  {
+    buf2[i] = buf[i + 2];
+  }
+  rxData += (char*)buf2; // copy char to String that concats received data
+  if (num == numPac) // if last packet then transfer to json and wipe rxData String
+  {
+    #ifdef SERIAL_DEBUG
+    Serial.print("Json contents before rx: ");
+    Serial.println(j.dump().c_str());
+    Serial.print("Reconstructed rx string: ");
+    Serial.println(rxData);
+    #endif
+
+    nlohmann::json jRx = nlohmann::json::parse(rxData); // temp json object to hold received data
+    nlohmann::json jt; // temp json object to hold time of rx
+    DateTime now = rtc.now();
+    jt["year"] = now.year();
+    jt["month"] = now.month();
+    jt["day"] = now.day();
+    jt["hour"] = now.hour();
+    jt["minute"] = now.minute();
+    jt["second"] = now.second();
+    j["units"][from - 1].update(jt); // update time in global json object for this unit
+    j["units"][from - 1].update(jRx); // update global json contents with newly recieved data
+    rxData = ""; // wipe string
+
+    #ifdef SERIAL_DEBUG
+    Serial.print("Json contents after rx: ");
+    Serial.println(j.dump().c_str());
+    #endif
+  }
+}
+
 void updateDisplay(float DB, float RH, float WB) {
   display.fillScreen(ST77XX_WHITE);
   display.setTextSize(2);
@@ -348,6 +397,13 @@ void updateDisplay(float DB, float RH, float WB) {
   display.print(F(" N/A"));  
   display.print(F("     "));
   display.print(outRSSI);
+
+  #ifdef SERIAL_DEBUG
+  display.setCursor(5, 155);
+  display.setTextColor(ST77XX_BLACK);
+  display.print(F("MEM: "));
+  display.print(FreeMem());
+  #endif
 
   display.drawFastVLine(195, 0, 153, ST77XX_BLACK);
   display.drawFastVLine(105, 0, 153, ST77XX_BLACK);
