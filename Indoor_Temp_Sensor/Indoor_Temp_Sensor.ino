@@ -19,7 +19,7 @@ Current status is a stable build.
   2024-12-28: Initial release.
 
 
-Copyright 2024 Jonathan Seyfert
+Copyright 2024, 2025 Jonathan Seyfert
 
 This file is part of Indoor-Outdoor_Temp_Sensor.
 
@@ -29,7 +29,7 @@ as published by the Free Software Foundation, either version 3 of the License, o
 Indoor-Outdoor_Temp_Sensor is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty
 of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License along with Foobar. If not, see <https://www.gnu.org/licenses/>. 
+You should have received a copy of the GNU General Public License along with Indoor-Outdoor_Temp_Sensor. If not, see <https://www.gnu.org/licenses/>. 
 */
 
 #include <Adafruit_GFX.h>    // Core graphics library
@@ -37,6 +37,7 @@ You should have received a copy of the GNU General Public License along with Foo
 #include "Adafruit_SHT4x.h" // for SHT45 temp/humidity sensor
 #include <SPI.h>  // For RFM69 & LCD & SD card
 #include <RH_RF69.h>  // For RFM69
+#include <RHReliableDatagram.h> // FOr RFM69
 #include <SD.h> // For SD card logging
 #include "RTClib.h" // For RTC
 #include "Button.h" //for buttons
@@ -59,6 +60,9 @@ You should have received a copy of the GNU General Public License along with Foo
 #define SERIAL_DEBUG     // Enables various serial debugging messages if defined
 #define MENU_SELECT ST77XX_WHITE, ST77XX_BLACK
 #define MENU_UNSELECT ST77XX_BLACK, ST77XX_WHITE
+
+#define BASE_STATION_ADDRESS 1 // Address of base station
+#define OUTDOOR_ADDRESS      2 // Address of outdoor unit
 
 /*
 M0 USED PINS NOT DEFINED ABOVE:
@@ -118,13 +122,15 @@ int outRSSI, kegRSSI, aqiRSSI; // for RSSI of remote sensors
 uint8_t encryptionKey[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // encryption key for RMF69 radio. Must match that on remote sensor!
                   0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}; // should change the default encryption key...
 
-RTC_PCF8523 rtc; // for RTC
+//RTC_PCF8523 rtc; // for RTC
+RTC_DS3231 rtc; // for RTC
 Button buttonUp(BUTTON_UP); // for an up button. Defaults to 100 ms debounch, use (pin, debounce_ms) to change
 Button buttonDown(BUTTON_DOWN); // for a down button
 Button buttonSelect(BUTTON_SELECT); // for a down button
 Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
 Adafruit_ST7789 display = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST); // for LCD
-RH_RF69 rf69(RFM69_CS, RFM69_INT); // for RFM69
+RH_RF69 driver(RFM69_CS, RFM69_INT); // Singleton instance of the radio driver
+RHReliableDatagram manager(driver, BASE_STATION_ADDRESS); // Class to manage message delivery and receipt, using the driver declared above
 
 void setup() {
   #ifdef SERIAL_DEBUG
@@ -153,9 +159,10 @@ void setup() {
   digitalWrite(RFM69_RST, LOW);
   delay(10);
 
-  rf69.init(); // Initialize RFM69 radio
-  rf69.setFrequency(RF69_FREQ); // Set RFM69 radio frequency
-  rf69.setEncryptionKey(encryptionKey);  // Set RFM69 encryption key
+  manager.init(); // Initialize RFM69 radio
+  driver.setFrequency(RF69_FREQ); // Set RFM69 radio frequency
+  driver.setTxPower(20, true); // Power levels can be set from -2 to 20, 2nd arg must be true for RFM69. 1% duty cycle at 20, VSWR 3:1 max
+  driver.setEncryptionKey(encryptionKey);  // Set RFM69 encryption key
   SPI.usingInterrupt(digitalPinToInterrupt(RFM69_INT)); // The RadioHead library doesn't register it does SPI within an interrupt, so this is required to avoid conflicts
   
   display.init(170, 320); // Initialize the LCD ST7789 (170x320 pixels)
@@ -185,7 +192,8 @@ void setup() {
     #endif
     displayError(F("Unable to initialize RTC!")); // display error on screen
   }
-  rtc.start(); // In case RTC was stopped, this will start it
+  //rtc.start(); // In case RTC was stopped, this will start it
+  //rtc.adjust(DateTime(F(__DATE__), F(__TIME__))); // adjusts date and time to that of sketch compiling. Comment out after first upload
   bootTime = rtc.now(); // Record the DateTime of boot
 
   // The below updates the display once on power-up
@@ -199,28 +207,34 @@ void setup() {
 }
 
 void loop() {
-  if (rf69.available()) { // we've received a packet
+  if (manager.available()) { // we've received a packet
     uint8_t buf[RH_RF69_MAX_MESSAGE_LEN];
     uint8_t len = sizeof(buf);
-    if (rf69.recv(buf, &len))
+    uint8_t from;
+    if (manager.recvfromAck(buf, &len, &from))
     {
       if (!len) return; // checks to see if message length is 0. Unclear why that's needed, since rf69.available should not return true if there is no message?
-      buf[len] = 0; // what does this do?
+      //buf[len] = 0; // what does this do?
       String rxPacket = ((char*)buf); // transfer message into String variable
-      int id = parseRxPacket(rxPacket); // parses out received packet into individual float variables and checks/updates outdoor Min/Max temps
-      if (id == 1) {
+      int id = from;
+      parseRxPacket(rxPacket, from); // parses out received packet into individual float variables and checks/updates outdoor Min/Max temps
+      if (id == 2) {
         outRxTime = rtc.now(); // Get time, so we can display time outside data was last received
-        outRSSI = rf69.lastRssi();
+        outRSSI = driver.lastRssi();
       }
-      else if (id == 2) { // kegerator sensor
+      else if (id == 3) { // kegerator sensor
         kegRxTime = rtc.now();
-        kegRSSI = rf69.lastRssi();
+        kegRSSI = driver.lastRssi();
       }
 
       #ifdef SERIAL_DEBUG
+      Serial.print("Recieved packet from unit #");
+      Serial.print(from);
+      Serial.print(". : ");
       Serial.println(rxPacket);
       Serial.print("RSSI: ");
-      Serial.println(outRSSI);
+      Serial.println(driver.lastRssi());
+      Serial.println();
       #endif
     }
   }
@@ -605,19 +619,15 @@ float batteryVoltage() { // Measures and returns battery voltage
   return volts;
 }
 
-/* Receives string as unitID/dryBulb/WBGT/humdity/battery voltage as X XX.X XX.X XX.X X.XX, parses to global floats, checks for outdoor Min/Max
+/* Receives string as dryBulb/WBGT/humdity/battery voltage as XX.X XX.X XX.X X.XX, parses to global floats, checks for outdoor Min/Max
     DOes not care about length of individual parts anymore, so long as they are space seperated
     Requires global float variables outDB, outWBGT, outRH, outBat, outdoorMax, outdoorMin
     Consider breaking out the Min/Max into it's own function? 
 */
-int parseRxPacket(String rx) { 
+int parseRxPacket(String rx, uint8_t unitID) { 
   String parseString = "";
   int spaceCounter = 0;
   int length = rx.length(); // get string length
-  int unitID = 0;
-  #ifdef SERIAL_DEBUG
-  Serial.println(length);
-  #endif
   for (int i = 0; i < length; i++) {
     if (rx.charAt(i) != 32) { //check for space. ASCII decimal 32 is space
       parseString.concat(rx.charAt(i));
@@ -626,29 +636,26 @@ int parseRxPacket(String rx) {
       spaceCounter++;
       switch (spaceCounter) {
         case 1: // location of space x
-          unitID = parseString.toInt();
-          break;
-        case 2: // location of space x
-          if (unitID == 1) {
+          if (unitID == 2) {
             outDB = parseString.toFloat();
           }
-          else if (unitID == 2) {
+          else if (unitID == 3) {
             kegDB = parseString.toFloat();
           }
           break;
-        case 3: // location of space x
-          if (unitID == 1) {
+        case 2: // location of space x
+          if (unitID == 2) {
             outWBGT = parseString.toFloat();
           }
-          else if (unitID == 2) {
+          else if (unitID == 3) {
             kegWBGT = parseString.toFloat();
           }
           break;
-        case 4: // location of space x
-          if (unitID == 1) {
+        case 3: // location of space x
+          if (unitID == 2) {
             outRH = parseString.toFloat();
           }
-          else if (unitID == 2) {
+          else if (unitID == 3) {
             kegRH = parseString.toFloat();
           }
           break;
@@ -656,19 +663,19 @@ int parseRxPacket(String rx) {
       parseString = ""; // wipe string
     }
     if (i == length - 1) { // check if this was the last for() loop iteration
-      if (unitID == 1) {
+      if (unitID == 2) {
         outBat = parseString.toFloat();
       }
-      else if (unitID == 2) {
+      else if (unitID == 3) {
         kegBat = parseString.toFloat();
       }
-      else if (unitID == 3) {
+      else if (unitID == 4) {
         aqi100um = parseString.toDouble();
       }
     }
   }
 
-  if (unitID == 1) { // only do this if we're talking about the outdoor unit
+  if (unitID == 2) { // only do this if we're talking about the outdoor unit
     if (outdoorMinMaxInitialized == false) { // see if we've ever done the initializing of outdoor Min/Max, if not, do so
       outdoorMax = outDB;
       outdoorMin = outDB;
