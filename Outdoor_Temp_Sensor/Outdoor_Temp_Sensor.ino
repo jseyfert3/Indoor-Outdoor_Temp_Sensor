@@ -46,6 +46,10 @@ float y = 0.0; // for custom dtostrf()
 float batteryVoltage = 0; // for measuring battery voltage
 enum Addresses {Base = 0, Outdoor = 1, Basement = 2,}; // addresses for all units in network
 
+// For debug
+uint16_t failed = 0;
+uint16_t numTimes = 0;
+
 Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
 RH_RF69 driver(RFM69_CS, RFM69_INT); // Singleton instance of the radio driver
 RHReliableDatagram manager(driver, Outdoor); // Class to manage message delivery and receipt, using the driver declared above
@@ -68,7 +72,7 @@ void setup() {
 
   pinMode(SHTPWRPIN, OUTPUT); // Initialize pin for SHT45 power control
   digitalWrite(SHTPWRPIN, HIGH); //turn on SHT45 for initialization
-  delay(100);
+  delay(1); // chip needs 1 ms delay on power up before it's ready
   sht4.begin(); // initialize SHT45 sensor
   sht4.setPrecision(SHT4X_HIGH_PRECISION); // can use MED or LOW, HIGH takes longer
   sht4.setHeater(SHT4X_NO_HEATER); // can use 6 different heater options, see example
@@ -93,8 +97,12 @@ void loop()
 
   for(int i = 1; i <= 10; i++)
   {
+    numTimes++;
     digitalWrite(SHTPWRPIN, HIGH); // turn on SHT45
-    delay(100); // give it some time to powerup
+    delay(1); // sensor needs 1 ms after power up before it's ready
+    sht4.begin(); // initialize SHT45 sensor
+    sht4.setPrecision(SHT4X_HIGH_PRECISION); // can use MED or LOW, HIGH takes longer
+    sht4.setHeater(SHT4X_NO_HEATER); // can use 6 different heater options, see example
     if(sht4.getEvent(&humidity, &temp)) // check if our request for temp and humidity worked
     {
       nlohmann::json message; // empty json struction to hold message we want to send
@@ -156,6 +164,7 @@ void loop()
       digitalWrite(SHTPWRPIN, LOW);
       delay(50);
 
+      failed++;
       #ifdef SERIAL_DEBUG
       Serial.print("failed to get event #");
       Serial.println(i);
@@ -203,10 +212,11 @@ void loop()
   //   digitalWrite(LED, HIGH); // turn on LED to indicate failure to recieve ack
   // }
   // in the future, try doing an if (manager.sendtoWait() and do something if it doesn't send. true is returned if it gets ack, false if not
+  Serial.println("Failed " + String(failed) + " times out of " + String(numTimes) + " total times.");
   digitalWrite(SHTPWRPIN, LOW); // turn off SHT45 for power saving while sleeping
   
   #ifdef SERIAL_DEBUG
-  delay(8000);
+  delay(16000);
   #else
   //digitalWrite(LED, LOW); // turn off LED to indicate sleep
   Watchdog.sleep(16000); // sleep for 16 seconds (16 is maximum, but if you do between 8000 and 16000 will drop to 8)
