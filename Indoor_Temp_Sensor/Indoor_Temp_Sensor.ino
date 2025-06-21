@@ -1,24 +1,4 @@
 /*
-Sketch for indoor unit of indoor/outdoor "which is better" project to determine if opening windows or keeping them closed feels better.
-Indoor unit has graphic LCD display & RTC with SD card logging & SHT45 RH/temp sensor.
-Outdoor unit has RHT45 sensor and goes to sleep to save battery.
-Both units are built on a M0 powered Feather with RFM69 915 MHz radio (USA ISM frequency).
-
-Cut e-ink ECS pin, soldered wire to move it to pin A1 on feather (GPIO 15 on M0 Feather)
-Cut SDCS pin on RTC FeatherWing, jumpered to pin A2 on feather (GPIO 16 on M0 Feather)
-
-Current status is a stable build. 
-  Has last update time for indoor & outdoor time displayed
-  Logs inside and outside data in CSV format on SD card
-    - Format is inside time, inside temp, inside RH, inside WBGT, outside time, outside temp, outside RH, outside WBGT, RSSI
-  Added error message screen
-  Added homemade message parser and conversion to floats
-  2024-01-27: Added unit ID, display of keg temp if button C is pressed
-  2024-02-18: Added parsing for unit 3, a AQI sensor. Really need to get the Raspberry Pi going...
-  2024-11-xx: Cleaned up code, a "watchdog" led, added configuration menu...
-  2024-12-28: Initial release.
-
-
 Copyright 2024, 2025 Jonathan Seyfert
 
 This file is part of Indoor-Outdoor_Temp_Sensor.
@@ -42,9 +22,12 @@ You should have received a copy of the GNU General Public License along with Ind
 #include "RTClib.h" // For RTC
 #include "Button.h" //for buttons
 #include <array>
-#include <json.hpp> // for nlohmann/json
+#include <json.hpp>
+//Must place json.hpp this in your Arduino IDE libraries folder in a folder called "json". 
+//When including in sketch, it must come after including RH_RF69.h or you must include Arduino.h AFTER this library or compiling will fail due to how Arduino defines abs() with a macro
 
-#define VBATPIN       A7 // 9/A7 - Internal battery voltage divider measurement pin
+//#define VBATPIN       A7 // 9/A7 - Internal battery voltage divider measurement pin
+const int VBATPIN = A7;  // 9/A7 - Internal battery voltage divider measurement pin
 #define RF69_FREQ     915.0  // RFM69 frequency (MHz)
 #define RFM69_CS      8  // RFM69 pins on M0 Feather
 #define RFM69_INT     3  // RFM69 pins on M0 Feather
@@ -169,6 +152,7 @@ void setup() {
   buttonDown.begin();
   buttonSelect.begin();
 
+  pinMode(VBATPIN, INPUT);
   // When not using RFM, uncomment the below two lines to keep pin 8 RFM69 CS high, otherwise RMF69 will conflict with other SPI devices
   // pinMode(8, OUTPUT);  
   // digitalWrite(8, HIGH);
@@ -379,7 +363,7 @@ void updateDisplay(float DB, float RH, float WB)
   float outsideDB = j["units"][1]["dry_bulb"].template get<float>()*1.8 + 32;
   float outsideWB = j["units"][1]["wet_bulb"].template get<float>()*1.8 + 32;
   float outsideRH = j["units"][1]["humidity"].template get<float>();
-  float outsideWBGT = 0.7*outsideDB + 0.3*outsideWB;
+  float outsideWBGT = 0.7*outsideWB + 0.3*outsideDB;
   float outsideBat = j["units"][1]["battery_voltage"].template get<float>();
   int8_t outsideRSSI = j["units"][1]["RSSI"].template get<int8_t>();
   display.fillScreen(ST77XX_WHITE);
