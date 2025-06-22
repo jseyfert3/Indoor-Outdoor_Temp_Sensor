@@ -21,15 +21,19 @@ You should have received a copy of the GNU General Public License along with Ind
 // Must place json.hpp in your Arduino IDE libraries folder in a folder called "json". 
 // When including in sketch, it must come after including RH_RF69.h or you must include Arduino.h AFTER this library or compiling will fail due to how Arduino defines abs() with a macro
 
-const uint16_t rfm69Freq = 915; // Frequency of RFM69
-const uint8_t rfm69Cs = 8; // RFM69 SPI chip select pin
-const uint8_t rfm69Int = 3; // RFM69 interrupt pin
-const uint8_t rfm69Rst = 4; // RFM69 reset pin
-const uint8_t led = 13; // Built-in LED on M0 Feather
-const uint8_t vBat = A7; // Internal battery voltage divider measurement pin
-const uint8_t shtPwr = 5; // Pin to supply power to SHT45 to turn it on and off for power savings
-extern "C" char *sbrk(int i);	// for FreeMem()
+// #define SERIAL_DEBUG // Uncomment if serial debugging is desired. Watchdog sleep will be disabled if defined and replaced with delay()
 
+// The below are the pin number variables. Update based on microcontroller and usage
+const uint8_t rfm69Cs = 8;		// RFM69 SPI chip select pin
+const uint8_t rfm69Int = 3;		// RFM69 interrupt pin
+const uint8_t rfm69Rst = 4;		// RFM69 reset pin
+const uint8_t led = 13;			// Built-in LED on M0 Feather
+const uint8_t vBat = A7;		// Internal battery voltage divider measurement pin
+const uint8_t shtPwr = 5;		// Pin to supply power to SHT45 to turn it on and off for power savings
+
+// The below are config variables. Adjust to suit needs
+const uint16_t rfm69Freq = 915;	// Frequency of RFM69
+uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}; // encryption key, must be set as same as main unit
 enum Address // addresses for all units in the network
 {
 	base = 0,
@@ -38,18 +42,20 @@ enum Address // addresses for all units in the network
 };
 Address thisUnit { outdoor }; // Set this to the enum in the list above for which unit this is
 
+// The below variables are not config variables 
+extern "C" char *sbrk(int i);	// for FreeMem()
+
 Adafruit_SHT4x sht4 = Adafruit_SHT4x(); // for SHT45
 RH_RF69 driver(rfm69Cs, rfm69Int); // Singleton instance of the radio driver
 RHReliableDatagram manager(driver, thisUnit); // Class to manage message delivery and receipt, using the driver declared above
 
-// #define SERIAL_DEBUG // Uncomment if serial debugging is desired. Watchdog sleep will be disabled if defined and replaced with delay()
-
-void setup() {
+void setup()
+{
 	#ifdef SERIAL_DEBUG
 	Serial.begin(115200);
 	#endif
 
-pinMode(rfm69Rst, OUTPUT);
+	pinMode(rfm69Rst, OUTPUT);
 	digitalWrite(rfm69Rst, LOW);
 
 	// manual reset RFM69
@@ -70,7 +76,6 @@ pinMode(rfm69Rst, OUTPUT);
 	manager.init(); // Initialize RFM69
 	driver.setFrequency(rfm69Freq); // Set RFM69 frequency
 	driver.setTxPower(20, true);	// Power levels can be set from -2 to 20, 2nd arg must be true for RFM69. 1% duty cycle at 20, VSWR 3:1 max
-	uint8_t key[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}; // encryption key, must be set as same as main unit
 	driver.setEncryptionKey(key);
 }
 
